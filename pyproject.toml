@@ -1,0 +1,19 @@
+[project]
+name = "atlas-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "tha_orakkle", email = "adegbiranayinoluwa.paul@yahoo.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=2.53.0",
+]
+
+[project.scripts]
+atlas-ai = "atlas_ai:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
