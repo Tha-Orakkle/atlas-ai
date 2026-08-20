@@ -1,11 +1,12 @@
 from atlas_ai.client import get_response
+from atlas_ai.prompts import PROMPTS
 
 
 def main() -> None:
     context = [
         {
             "role": "developer",
-            "content": "You are Atlas, a helpful AI assistant."
+            "content": PROMPTS["main"]
         }
     ]
     print("Atlas AI")
