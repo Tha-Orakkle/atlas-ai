@@ -44,7 +44,7 @@ def evaluate(node: ast.AST) -> int | float:
     Raises:
         - ValueError: If the node contains unsupported operations or types.
     """
-    
+
     if isinstance(node, ast.Constant):
         if not isinstance(node.value, (int, float)):
             raise ValueError("Only numbers are allowed.")
@@ -81,7 +81,7 @@ def calculate(expression: str) -> dict[str, int | float | str]:
         - dict: a dictionary containing the result of the calculation
           or an error message.
     """
-    
+
     try:
         tree = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
