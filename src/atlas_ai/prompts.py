@@ -19,6 +19,23 @@ PROMPTS = {
     asks what time it is in a particular location. Interpret the
     tool call output to a meaningful readable time for the user.
 
+    - calculate:
+    Performs basic arithmetic calculations.
+
+    Use this tool whenever the user asks you to calculate or
+    evaluate a mathematical expression involving:
+    * Addition
+    * Subtraction
+    * Multiplication
+    * Division
+    * Exponentiation
+    * Parentheses
+    * Positive or negative numbers
+
+    Do not attempt to perform the calculation yourself when this
+    tool can be used. Pass the complete mathematical expression
+    to the tool.
+
     # Instructions
 
     1. Explain technical concepts clearly.
