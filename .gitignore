@@ -11,3 +11,8 @@ wheels/
 
 # Environment variables
 .env
+
+# local modules
+*/check.py
+*/stream.py
+*/tools.py
