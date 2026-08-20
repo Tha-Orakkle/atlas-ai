@@ -1,6 +1,5 @@
-from atlas_ai.tools.definitions import get_current_time
-from atlas_ai.tools.schemas import current_time_tool
 from atlas_ai.tools.calculator import calculate_tool, calculate
+from atlas_ai.tools.current_time import current_time_tool, get_current_time
 
 TOOLS = {
     "get_current_time": {
@@ -10,6 +9,5 @@ TOOLS = {
     "calculate": {
         "schema": calculate_tool,
         "function": calculate
-        
     }
 }
