@@ -1,14 +1,10 @@
-from atlas_ai.client import get_response
-from atlas_ai.prompts import PROMPTS
+from atlas_ai.llm.client import OpenAIClient
+from atlas_ai.services.assistant import AssistantService
 
 
 def main() -> None:
-    context = [
-        {
-            "role": "developer",
-            "content": PROMPTS["main"]
-        }
-    ]
+    client = OpenAIClient()
+    assistant = AssistantService(llm_client=client)
     print("Atlas AI")
     print("Type 'exit' to quit.\n")
 
@@ -19,19 +15,8 @@ def main() -> None:
             print("Goodbye.")
             break
 
-        context.append({
-            "role": "user",
-            "content": user_input
-        })
-
-        output = get_response(context)
-
-        print(f"\nAtlas: {output}\n")
-
-        context.append({
-            "role": "assistant",
-            "content": output
-        })
+        response = assistant.generate_response(user_input)
+        print(f"\nAtlas: {response}\n")
 
 
 if __name__ == "__main__":
