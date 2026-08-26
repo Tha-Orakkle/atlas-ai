@@ -15,7 +15,11 @@ class OpenAIClient:
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model = "gpt-5.4-mini"
 
-    def generate(self, context: list[dict], tools: list[dict] = None):
+    def generate(
+        self,
+        context: list[dict],
+        tools: list[dict] | None = None
+    ):
         """
         Communicates with the OpenAI responses API.
         Args:
