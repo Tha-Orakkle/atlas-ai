@@ -1,5 +1,4 @@
 from openai import OpenAI
-from atlas_ai.config import OPENAI_API_KEY
 
 
 class OpenAIClient:
@@ -8,12 +7,12 @@ class OpenAIClient:
     OpenAI SDK.
     """
 
-    def __init__(self):
+    def __init__(self, api_key: str, model: str):
         """
         Initializes an openai client
         """
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
-        self.model = "gpt-5.4-mini"
+        self.client = OpenAI(api_key=api_key)
+        self.model = model
 
     def generate(
         self,

@@ -1,9 +1,13 @@
+from atlas_ai import config
 from atlas_ai.llm.client import OpenAIClient
 from atlas_ai.services.assistant import AssistantService
 
 
 def main() -> None:
-    client = OpenAIClient()
+    client = OpenAIClient(
+        api_key=config.OPENAI_API_KEY,
+        model=config.OPENAI_MODEL
+    )
     assistant = AssistantService(llm_client=client)
     print("Atlas AI")
     print("Type 'exit' to quit.\n")
