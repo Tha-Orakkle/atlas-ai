@@ -45,7 +45,7 @@ class AssistantService:
                     "type": "function_call_output",
                     "call_id": item.call_id,
                     "output": json.dumps({
-                        "error", f"Unknown tool: {item.name}"
+                        "error": f"Unknown tool: {item.name}"
                     })
                 })
                 continue
