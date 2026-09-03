@@ -1,6 +1,9 @@
+import logging
 from atlas_ai import config
 from atlas_ai.llm.client import OpenAIClient
 from atlas_ai.services.assistant import AssistantService
+
+logging.basicConfig(level=logging.INFO)
 
 
 def main() -> None:
