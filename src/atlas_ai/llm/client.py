@@ -30,7 +30,6 @@ class OpenAIClient:
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.tools_schema = [tool["schema"] for tool in TOOLS.values()]
-        self.default_error_message = "OpenAI failed."
 
     def generate(self, context: list[dict]):
         """
@@ -49,8 +48,10 @@ class OpenAIClient:
             )
 
         except RateLimitError as exc:
+            retry_after = exc.response.headers.get("Retry-After")
             raise LLMRateLimitError(
-                "The LLM provider rate limit was exceeded."
+                "The LLM provider rate limit was exceeded.",
+                retry_after=retry_after
             ) from exc
 
         except APITimeoutError as exc:
