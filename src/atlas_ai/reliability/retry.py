@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Callable, Any
 
 from atlas_ai import config
-from atlas_ai.errors import AtlasError, LLMTimeoutError
+from atlas_ai.errors import AtlasError
 
 logger = logging.getLogger(__name__)
 
