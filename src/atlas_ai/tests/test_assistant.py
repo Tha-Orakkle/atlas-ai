@@ -1,0 +1,102 @@
+import json
+import logging
+from types import SimpleNamespace
+
+import pytest
+
+from atlas_ai.errors import AtlasError
+from atlas_ai.services.assistant import AssistantService
+
+
+class FakeLLMClient:
+    def __init__(self, responses=None, error=None):
+        self.responses = iter(responses or [])
+        self.error = error
+
+    def generate(self, context):
+        if self.error is not None:
+            raise self.error
+        return next(self.responses)
+
+
+def make_response(output_text="success", output=None):
+    return SimpleNamespace(
+        output_text=output_text,
+        output=output or [],
+    )
+
+
+def test_generate_response_logs_request_start_and_completion(caplog):
+    client = FakeLLMClient(
+        responses=[make_response(output_text="Hello")]
+    )
+    assistant = AssistantService(client)
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.services.assistant"):
+        result = assistant.generate_response("Hello")
+
+    assert result == "Hello"
+    assert "LLM request started" in caplog.text
+    assert "LLM request completed" in caplog.text
+
+
+def test_generate_response_logs_failed_request_exception(caplog):
+    error = AtlasError("LLM unavailable")
+    assistant = AssistantService(FakeLLMClient(error=error))
+
+    with caplog.at_level(logging.ERROR, logger="atlas_ai.services.assistant"):
+        result = assistant.generate_response("Hello")
+
+    assert result == "Atlas encountered an error: LLM unavailable"
+    assert "LLM request failed" in caplog.text
+    assert "AtlasError: LLM unavailable" in caplog.text
+
+
+def test_tool_execution_is_logged_without_arguments(caplog):
+    secret = "super-secret-api-key"
+    tool = {
+        "schema": {"type": "function", "name": "test_tool"},
+        "function": lambda **kwargs: {"result": "ok"},
+    }
+
+    assistant = AssistantService(FakeLLMClient())
+    assistant.tools_registry = {"test_tool": tool}
+    response_item = SimpleNamespace(
+        type="function_call",
+        name="test_tool",
+        call_id="call-1",
+        arguments=json.dumps({"api_key": secret}),
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.services.assistant"):
+        assistant.execute_tools([response_item])
+
+    assert "Executing tool 'test_tool'" in caplog.text
+    assert secret not in caplog.text
+    assert "api_key" not in caplog.text
+
+
+def test_retry_attempts_remain_logged(monkeypatch, caplog):
+    from atlas_ai.errors import LLMRateLimitError
+    from atlas_ai.reliability.retry import RetryPolicy, retry
+
+    calls = 0
+
+    def operation():
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise LLMRateLimitError("rate limited")
+        return "success"
+
+    monkeypatch.setattr(
+        "atlas_ai.reliability.retry.time.sleep",
+        lambda _: None,
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.reliability.retry"):
+        result = retry(operation, policy=RetryPolicy(max_attempts=3))
+
+    assert result == "success"
+    assert "Attempt 1/3 failed: rate limited" in caplog.text
+    assert "Attempt 2/3 failed: rate limited" in caplog.text
