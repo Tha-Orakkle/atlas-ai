@@ -1,12 +1,12 @@
-import logging
 from atlas_ai import config
+from atlas_ai.errors import AtlasError
 from atlas_ai.llm.client import OpenAIClient
 from atlas_ai.services.assistant import AssistantService
-
-logging.basicConfig(level=logging.INFO)
+from atlas_ai.logging_config import configure_logging
 
 
 def main() -> None:
+    configure_logging()
     client = OpenAIClient(
         api_key=config.OPENAI_API_KEY,
         model=config.OPENAI_MODEL
@@ -22,7 +22,11 @@ def main() -> None:
             print("Goodbye.")
             break
 
-        response = assistant.generate_response(user_input)
+        try:
+            response = assistant.generate_response(user_input)
+        except AtlasError as exc:
+            response = f"Atlas encountered an error: {exc}"
+
         print(f"\nAtlas: {response}\n")
 
 
