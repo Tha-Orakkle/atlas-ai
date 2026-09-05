@@ -1,7 +1,11 @@
 import json
+import logging
+from uuid import uuid4
+from atlas_ai.errors import AtlasError
 from atlas_ai.tools.registry import TOOLS
 from atlas_ai.prompts import PROMPTS
-from atlas_ai.errors import AtlasError
+
+logger = logging.getLogger(__name__)
 
 
 class AssistantService:
@@ -78,22 +82,43 @@ class AssistantService:
         Args:
         - user_input: input by user
         """
+        request_id = str(uuid4())
+
+        logger.info("Request started | request_id=%s", request_id)
+
         self.add_to_context("user", user_input)
 
         input_list = self.context.copy()
 
-        while True:
-            try:
+        try:
+            while True:
+                logger.info(
+                    "Calling LLM | request_id=%s",
+                    request_id
+                )
+
                 response = self.client.generate(
                     context=input_list,
                 )
-            except AtlasError as exc:
-                return f"Atlas encountered an error: {exc}"
-            input_list += response.output
-            tools_output = self.execute_tools(response.output)
-            if not tools_output:
-                break
-            input_list += tools_output
 
-        self.add_to_context("assistant", response.output_text)
-        return response.output_text
+                input_list += response.output
+                tools_output = self.execute_tools(response.output)
+                if not tools_output:
+                    break
+                input_list += tools_output
+
+            self.add_to_context("assistant", response.output_text)
+
+            logger.info(
+                "Request completed | request_id=%s",
+                request_id
+            )
+
+            return response.output_text
+
+        except AtlasError as exc:
+            logging.error(
+                "Request failed | request_id=%s",
+                request_id
+            )
+            raise
