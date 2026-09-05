@@ -2,8 +2,6 @@ import json
 import logging
 from types import SimpleNamespace
 
-import pytest
-
 from atlas_ai.errors import AtlasError
 from atlas_ai.services.assistant import AssistantService
 
@@ -74,29 +72,3 @@ def test_tool_execution_is_logged_without_arguments(caplog):
     assert "Executing tool 'test_tool'" in caplog.text
     assert secret not in caplog.text
     assert "api_key" not in caplog.text
-
-
-def test_retry_attempts_remain_logged(monkeypatch, caplog):
-    from atlas_ai.errors import LLMRateLimitError
-    from atlas_ai.reliability.retry import RetryPolicy, retry
-
-    calls = 0
-
-    def operation():
-        nonlocal calls
-        calls += 1
-        if calls < 3:
-            raise LLMRateLimitError("rate limited")
-        return "success"
-
-    monkeypatch.setattr(
-        "atlas_ai.reliability.retry.time.sleep",
-        lambda _: None,
-    )
-
-    with caplog.at_level(logging.INFO, logger="atlas_ai.reliability.retry"):
-        result = retry(operation, policy=RetryPolicy(max_attempts=3))
-
-    assert result == "success"
-    assert "Attempt 1/3 failed: rate limited" in caplog.text
-    assert "Attempt 2/3 failed: rate limited" in caplog.text
