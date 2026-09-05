@@ -1,4 +1,8 @@
 import json
+import logging
+
+from uuid import uuid4
+from atlas_ai.errors import AtlasError
 from atlas_ai.tools.registry import TOOLS
 from atlas_ai.prompts import PROMPTS
 
@@ -87,18 +91,16 @@ class AssistantService:
 
         input_list = self.context.copy()
 
-        while True:
-            try:
+        try:
+            while True:
+                logger.info(
+                    "Calling LLM | request_id=%s",
+                    request_id
+                )
+
                 response = self.client.generate(
                     context=input_list,
                 )
-            except AtlasError as exc:
-                return f"Atlas encountered an error: {exc}"
-            input_list += response.output
-            tools_output = self.execute_tools(response.output)
-            if not tools_output:
-                break
-            input_list += tools_output
 
                 input_list += response.output
                 tools_output = self.execute_tools(response.output)
