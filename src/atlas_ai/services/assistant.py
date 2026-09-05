@@ -1,7 +1,12 @@
 import json
+import logging
+
 from atlas_ai.tools.registry import TOOLS
 from atlas_ai.prompts import PROMPTS
 from atlas_ai.errors import AtlasError
+
+
+logger = logging.getLogger(__name__)
 
 
 class AssistantService:
@@ -44,7 +49,7 @@ class AssistantService:
         }
 
     def execute_tools(self, response_output: list) -> list[dict]:
-        """"
+        """
         Gets and executes the tool called by model.
         Args:
             - response_output: list of responses from the AI model.
@@ -56,6 +61,9 @@ class AssistantService:
         for item in response_output:
             if item.type != "function_call":
                 continue
+
+            logger.info("Executing tool '%s'", item.name)
+
             tool = self.tools_registry.get(item.name)
             if not tool:
                 tools_output.append(self.make_tool_output(
@@ -69,6 +77,7 @@ class AssistantService:
             tools_output.append(self.make_tool_output(
                 call_id=item.call_id, output=result
             ))
+
         return tools_output
 
     def generate_response(self, user_input: str) -> str:
@@ -83,12 +92,18 @@ class AssistantService:
         input_list = self.context.copy()
 
         while True:
+            logger.info("LLM request started")
+
             try:
                 response = self.client.generate(
                     context=input_list,
                 )
             except AtlasError as exc:
+                logger.exception("LLM request failed")
                 return f"Atlas encountered an error: {exc}"
+
+            logger.info("LLM request completed")
+
             input_list += response.output
             tools_output = self.execute_tools(response.output)
             if not tools_output:
