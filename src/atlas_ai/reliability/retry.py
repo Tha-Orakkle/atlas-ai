@@ -41,7 +41,7 @@ def retry(
             )
 
             if not exc.retryable:
-                logger.error("Error is not retryable. Aborting")
+                logger.error("Error is not retryable. Aborting.")
                 raise
 
             if attempt == policy.max_attempts:
