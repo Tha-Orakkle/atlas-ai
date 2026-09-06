@@ -61,12 +61,24 @@ class AssistantService:
         for item in response_output:
             if item.type != "function_call":
                 continue
+
+            logger.info(
+                "Executing tool | tool=%s",
+                item.name
+            )
+
             tool = self.tools_registry.get(item.name)
             if not tool:
                 tools_output.append(self.make_tool_output(
                     call_id=item.call_id,
                     output={"error": f"Unknown tool: {item.name}"}
                 ))
+
+                logger.exception(
+                    "Tool execution failed. Tool not found. | tool=%s",
+                    item.name
+                )
+
                 continue
 
             args = json.loads(item.arguments)
@@ -74,6 +86,12 @@ class AssistantService:
             tools_output.append(self.make_tool_output(
                 call_id=item.call_id, output=result
             ))
+
+            logger.info(
+                "Tool completed | tool=%s",
+                item.name
+            )
+
         return tools_output
 
     def generate_response(self, user_input: str) -> str:
@@ -118,7 +136,7 @@ class AssistantService:
             return response.output_text
 
         except AtlasError as exc:
-            logging.error(
+            logging.exception(
                 "Request failed | request_id=%s",
                 request_id
             )
