@@ -1,4 +1,6 @@
 import pytest
+import logging
+
 from atlas_ai.reliability.retry import retry, RetryPolicy
 from atlas_ai.errors import (
     AtlasError,
@@ -235,3 +237,27 @@ def test_backoff_is_capped_by_max_delay(monkeypatch):
     # Attempt 2:
     # 10 * 2**1 = 20 -> capped at 15
     assert sleep_times == [10, 15]
+
+
+def test_retry_attempts_remain_logged(monkeypatch, caplog):
+    """Test that each failed retry attempt is logged."""
+    calls = 0
+
+    def operation():
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise LLMRateLimitError("rate limited")
+        return "success"
+
+    monkeypatch.setattr(
+        "atlas_ai.reliability.retry.time.sleep",
+        lambda _: None,
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.reliability.retry"):
+        result = retry(operation, policy=RetryPolicy(max_attempts=3))
+
+    assert result == "success"
+    assert "Attempt 1/3 failed: rate limited" in caplog.text
+    assert "Attempt 2/3 failed: rate limited" in caplog.text
