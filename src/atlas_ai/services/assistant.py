@@ -136,7 +136,7 @@ class AssistantService:
             return response.output_text
 
         except AtlasError as exc:
-            logging.exception(
+            logger.exception(
                 "Request failed | request_id=%s",
                 request_id
             )
