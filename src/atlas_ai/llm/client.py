@@ -1,3 +1,4 @@
+from typing import Protocol
 from openai import (
     AuthenticationError,
     APIConnectionError,
@@ -15,6 +16,12 @@ from atlas_ai.errors import (
     LLMAuthenticationError,
 )
 from atlas_ai.tools.registry import TOOLS
+
+
+class LLMClient(Protocol):
+    def generate(self, context: list[dict]):
+        """"Generate a response from the language model."""
+        ...
 
 
 class OpenAIClient:
