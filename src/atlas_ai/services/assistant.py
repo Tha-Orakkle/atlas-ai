@@ -36,7 +36,6 @@ class AssistantService:
             "content": content
         })
 
-
     def generate_response(self, user_input: str) -> str:
         """
         Get responses from AI model. Execute tools if
