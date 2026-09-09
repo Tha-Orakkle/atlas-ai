@@ -1,10 +1,8 @@
-import json
 import logging
 
 from uuid import uuid4
 from atlas_ai.errors import AtlasError
 from atlas_ai.llm.client import LLMClient
-from atlas_ai.tools.registry import TOOLS
 from atlas_ai.tools.executor import ToolExecutor
 from atlas_ai.prompts import PROMPTS
 
