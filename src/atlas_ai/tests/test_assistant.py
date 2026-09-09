@@ -4,9 +4,12 @@ import pytest
 
 from types import SimpleNamespace
 
-
 from atlas_ai.errors import AtlasError
 from atlas_ai.services.assistant import AssistantService
+from atlas_ai.tools.executor import ToolExecutor
+from atlas_ai.tools.registry import TOOLS
+
+TOOL_EXECUTOR = ToolExecutor(tool_registry=TOOLS)
 
 
 class FakeLLMClient:
@@ -31,7 +34,7 @@ def test_generate_response_logs_request_start_and_completion(caplog):
     client = FakeLLMClient(
         responses=[make_response(output_text="Hello")]
     )
-    assistant = AssistantService(client)
+    assistant = AssistantService(client, TOOL_EXECUTOR)
 
     with caplog.at_level(logging.INFO, logger="atlas_ai.services.assistant"):
         result = assistant.generate_response("Hello")
@@ -44,10 +47,16 @@ def test_generate_response_logs_request_start_and_completion(caplog):
 
 def test_generate_response_logs_failed_request_exception(caplog):
     error = AtlasError("LLM unavailable")
-    assistant = AssistantService(FakeLLMClient(error=error))
+    assistant = AssistantService(
+        FakeLLMClient(error=error),
+        TOOL_EXECUTOR
+    )
 
     with pytest.raises(AtlasError):
-        with caplog.at_level(logging.INFO, logger="atlas_ai.services.assistant"):
+        with caplog.at_level(
+            logging.INFO,
+            logger="atlas_ai.services.assistant"
+        ):
             assistant.generate_response("Hello")
 
     assert "Request started | request_id=" in caplog.text
@@ -62,8 +71,14 @@ def test_tool_execution_is_logged_without_arguments(caplog):
         "function": lambda **kwargs: {"result": "ok"},
     }
 
-    assistant = AssistantService(FakeLLMClient())
-    assistant.tools_registry = {"test_tool": tool}
+    assistant = AssistantService(
+        FakeLLMClient(),
+        tool_executor=ToolExecutor(
+            tool_registry={
+                "test_tool": tool
+            }
+        )
+    )
     response_item = SimpleNamespace(
         type="function_call",
         name="test_tool",
@@ -71,8 +86,8 @@ def test_tool_execution_is_logged_without_arguments(caplog):
         arguments=json.dumps({"api_key": secret}),
     )
 
-    with caplog.at_level(logging.INFO, logger="atlas_ai.services.assistant"):
-        assistant.execute_tools([response_item])
+    with caplog.at_level(logging.INFO, logger="atlas_ai.tools.executor"):
+        assistant.tool_executor.execute([response_item])
 
     assert "Executing tool | tool=test_tool" in caplog.text
     assert "Tool completed | tool=test_tool" in caplog.text
@@ -81,8 +96,12 @@ def test_tool_execution_is_logged_without_arguments(caplog):
 
 
 def test_tool_execution_logs_unknown_tool(caplog):
-    assistant = AssistantService(FakeLLMClient())
-    assistant.tools_registry = {}
+    assistant = AssistantService(
+        FakeLLMClient(),
+        tool_executor=ToolExecutor(
+            tool_registry={}
+        )
+    )
     response_item = SimpleNamespace(
         type="function_call",
         name="test_tool",
@@ -90,8 +109,8 @@ def test_tool_execution_logs_unknown_tool(caplog):
         arguments=json.dumps({})
     )
 
-    with caplog.at_level(logging.INFO, logger="atlas_ai.services.assistant"):
-        assistant.execute_tools([response_item])
+    with caplog.at_level(logging.INFO, logger="atlas_ai.tools.executor"):
+        assistant.tool_executor.execute([response_item])
 
     assert "Executing tool | tool=test_tool" in caplog.text
-    assert "Tool execution failed. Tool not found. | tool=test_tool" in caplog.text
+    assert "Tool not found | tool=test_tool" in caplog.text
