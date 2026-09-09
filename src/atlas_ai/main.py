@@ -2,6 +2,8 @@ from atlas_ai import config
 from atlas_ai.errors import AtlasError
 from atlas_ai.llm.client import OpenAIClient
 from atlas_ai.services.assistant import AssistantService
+from atlas_ai.tools.executor import ToolExecutor
+from atlas_ai.tools.registry import TOOLS
 from atlas_ai.logging_config import configure_logging
 
 
@@ -11,7 +13,14 @@ def main() -> None:
         api_key=config.OPENAI_API_KEY,
         model=config.OPENAI_MODEL
     )
-    assistant = AssistantService(llm_client=client)
+
+    tool_executor = ToolExecutor(tool_registry=TOOLS)
+
+    assistant = AssistantService(
+        llm_client=client,
+        tool_executor=tool_executor
+    )
+
     print("Atlas AI")
     print("Type 'exit' to quit.\n")
 
