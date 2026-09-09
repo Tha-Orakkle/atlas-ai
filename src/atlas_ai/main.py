@@ -14,7 +14,7 @@ def main() -> None:
         model=config.OPENAI_MODEL
     )
 
-    tool_executor = ToolExecutor(tool_registry=TOOLS)
+    tool_executor = ToolExecutor(tools_registry=TOOLS)
 
     assistant = AssistantService(
         llm_client=client,

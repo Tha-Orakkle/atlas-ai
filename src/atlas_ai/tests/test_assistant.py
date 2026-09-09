@@ -9,7 +9,7 @@ from atlas_ai.services.assistant import AssistantService
 from atlas_ai.tools.executor import ToolExecutor
 from atlas_ai.tools.registry import TOOLS
 
-TOOL_EXECUTOR = ToolExecutor(tool_registry=TOOLS)
+TOOL_EXECUTOR = ToolExecutor(tools_registry=TOOLS)
 
 
 class FakeLLMClient:
@@ -74,7 +74,7 @@ def test_tool_execution_is_logged_without_arguments(caplog):
     assistant = AssistantService(
         FakeLLMClient(),
         tool_executor=ToolExecutor(
-            tool_registry={
+            tools_registry={
                 "test_tool": tool
             }
         )
@@ -99,7 +99,7 @@ def test_tool_execution_logs_unknown_tool(caplog):
     assistant = AssistantService(
         FakeLLMClient(),
         tool_executor=ToolExecutor(
-            tool_registry={}
+            tools_registry={}
         )
     )
     response_item = SimpleNamespace(

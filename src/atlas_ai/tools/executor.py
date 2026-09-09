@@ -5,8 +5,8 @@ logger = logging.getLogger(__name__)
 
 
 class ToolExecutor:
-    def __init__(self, tool_registry):
-        self.tool_registry = tool_registry
+    def __init__(self, tools_registry):
+        self.tools_registry = tools_registry
 
     @staticmethod
     def _make_tool_output(
@@ -45,7 +45,7 @@ class ToolExecutor:
                 "Executing tool | tool=%s",
                 item.name
             )
-            tool = self.tool_registry.get(item.name)
+            tool = self.tools_registry.get(item.name)
 
             if not tool:
                 logger.error(
