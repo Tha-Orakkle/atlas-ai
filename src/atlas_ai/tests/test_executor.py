@@ -126,6 +126,17 @@ def test_unknown_tool_is_not_executed(executor, tool_function):
     tool_function.assert_not_called()
 
 
+def test_unknown_tool_is_logged(executor, caplog):
+    tool_call = make_tool_call(
+        name="unknown_tool"
+    )
+    with caplog.at_level(logging.INFO, logger="atlas_ai.tools.executor"):
+        executor.execute([tool_call])
+
+    assert "Executing tool | tool=unknown_tool" in caplog.text
+    assert "Tool not found | tool=unknown_tool" in caplog.text
+
+
 def test_tool_execution_failure_returns_safe_error(tools_registry):
 
     failing_tool = Mock(
