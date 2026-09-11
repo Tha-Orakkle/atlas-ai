@@ -16,6 +16,7 @@ from atlas_ai.errors import (
     LLMAuthenticationError,
 )
 from atlas_ai.tools.registry import TOOLS
+from atlas_ai.reliability.retry import retry
 
 
 class LLMClient(Protocol):
@@ -34,18 +35,16 @@ class OpenAIClient:
         """
         Initializes an openai client
         """
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(api_key=api_key, max_retries=0)
         self.model = model
         self.tools_schema = [tool["schema"] for tool in TOOLS.values()]
 
-    def generate(self, context: list[dict]):
+    def generate_response(self, context: list[dict]):
         """
         Communicates with the OpenAI responses API.
         Args:
             - context (list): list of conversation history,
               function calls and function call outputs
-            - tools (list): list of all available tools to the
-              nmodel
         """
         try:
             return self.client.responses.create(
@@ -85,3 +84,15 @@ class OpenAIClient:
             raise LLMBadRequestError(
                 f"LLM provider returned an error: {exc}"
             ) from exc
+
+    def generate(self, context: list[dict]):
+        """
+        Surround communication with the OpenAI responses API
+        with the Atlas retry policy.
+        Args:
+            - context (list): list of conversation history,
+              function calls and function call outputs
+        """
+        return retry(
+            lambda: self.generate_response(context)
+        )
