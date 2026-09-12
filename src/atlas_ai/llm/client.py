@@ -43,8 +43,7 @@ class OpenAIClient:
         """
         Communicates with the OpenAI responses API.
         Args:
-            - context (list): list of conversation history,
-              function calls and function call outputs
+            - context (list): conversation context.
         """
         try:
             return self.client.responses.create(
@@ -90,8 +89,8 @@ class OpenAIClient:
         Surround communication with the OpenAI responses API
         with the Atlas retry policy.
         Args:
-            - context (list): list of conversation history,
-              function calls and function call outputs
+            - context (list): conversation history,
+              function calls and function call outputs.
         """
         return retry(
             lambda: self.generate_response(context)
