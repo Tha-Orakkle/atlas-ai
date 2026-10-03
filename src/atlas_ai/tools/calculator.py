@@ -47,7 +47,7 @@ def evaluate(node: ast.AST) -> int | float:
 
     if isinstance(node, ast.Constant):
         if not isinstance(node.value, (int, float)):
-            raise ValueError("Only numbers are allowed.")
+            raise TypeError("Only numbers are allowed.")
 
         return node.value
 
@@ -89,7 +89,7 @@ def calculate(expression: str) -> dict[str, int | float | str]:
 
     try:
         result = evaluate(tree.body)
-    except ValueError as exc:
+    except Exception as exc:
         return {"error": f"Unable to perform operation: {exc}"}
 
     return {"result": result}
