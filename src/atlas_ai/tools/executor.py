@@ -60,11 +60,11 @@ class ToolExecutor:
             if not tool:
                 logger.error(
                     "Tool not found | tool=%s",
-                    tool.name
+                    tool_call.name
                 )
                 tool_results.append(
                     self._build_tool_result(
-                        call_id=tool_call.id,
+                        call_id=tool_call.call_id,
                         result={
                             "error": f"Unknown tool {tool_call.name}"
                         }
