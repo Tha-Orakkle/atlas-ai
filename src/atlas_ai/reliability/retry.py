@@ -1,8 +1,9 @@
 import logging
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Any
 
 from atlas_ai import config
 from atlas_ai.errors import AtlasError

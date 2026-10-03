@@ -1,4 +1,4 @@
-from atlas_ai.tools.calculator import calculate_tool, calculate
+from atlas_ai.tools.calculator import calculate, calculate_tool
 from atlas_ai.tools.current_time import current_time_tool, get_current_time
 
 TOOLS = {
