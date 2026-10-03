@@ -11,7 +11,11 @@ def main() -> None:
     configure_logging()
     client = OpenAIClient(
         api_key=config.OPENAI_API_KEY,
-        model=config.OPENAI_MODEL
+        model=config.OPENAI_MODEL,
+        tool_schema=[
+            tool["schema"]
+            for tool in TOOLS.values()
+        ]
     )
 
     tool_executor = ToolExecutor(tools_registry=TOOLS)
