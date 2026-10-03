@@ -73,7 +73,7 @@ class OpenAIClient:
     def _build_openai_tool_call(
         self,
         tool_calls: list[ToolCall]
-    ) -> dict[str, str]:
+    ) -> list[dict]:
 
         """
         Build OpenAI tool call requests.
@@ -92,7 +92,7 @@ class OpenAIClient:
     def _build_tool_result(
         self,
         results: list[ToolResult]
-    ) -> dict[str, str]:
+    ) -> list[dict]:
 
         return [
             {
