@@ -1,86 +1,106 @@
-import json
 import logging
+from typing import Any
+
+from atlas_ai.models import ToolCall, ToolResult, ToolResultMessage
 
 logger = logging.getLogger(__name__)
 
 
 class ToolExecutor:
-    def __init__(self, tools_registry):
+
+    def __init__(
+        self,
+        tools_registry: dict[str, Any]
+    ):
+        """
+        Initialize tool executor with the tool registry.
+        """
         self.tools_registry = tools_registry
 
-    @staticmethod
-    def _make_tool_output(
+    def _build_tool_result(
+        self,
         call_id: str,
-        output: dict
-    ) -> dict:
+        result: dict[str, Any]
+    ) -> ToolResult:
         """
-        Make tool output.
+        Convert tool result to application-level
+        ToolResult object.
         Args:
-            - call_id (str): The ID of the tool call from the model.
-            - output (dict): result of the tool.
-        Returns:
-            - a dict to be sent back to the model with the
-                type 'function_call_output'.
+            - call_id: model tool call ID.
+            - result: result of the tool.
         """
-        return {
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": json.dumps(output)
-        }
 
-    def execute(self, response_output: list) -> list:
+        return ToolResult(
+            call_id=call_id,
+            result=result
+        )
+
+    def execute(
+        self,
+        tool_calls: list[ToolCall]
+    ) -> ToolResultMessage:
+
         """"
-        Gets and executes the tool called by model.
+        Gets and executes the tools requested by model.
         Args:
-            - response_output: list of responses from the AI model.
+            - tool_calls: list of all ToolCall requests.
         Returns:
-            - list of all function_call_outputs
+            - ToolResultMessage containing all tool results.
         """
-        tools_output = []
+        tool_results = []
 
-        for item in response_output:
-            if item.type != "function_call":
-                continue
+        for tool_call in tool_calls:
             logger.info(
                 "Executing tool | tool=%s",
-                item.name
+                tool_call.name
             )
-            tool = self.tools_registry.get(item.name)
+
+            tool = self.tools_registry.get(tool_call.name)
 
             if not tool:
                 logger.error(
                     "Tool not found | tool=%s",
-                    item.name
+                    tool.name
                 )
-                tools_output.append(
-                    self._make_tool_output(
-                        call_id=item.call_id,
-                        output={"error": f"Unknown tool: {item.name}"}
+                tool_results.append(
+                    self._build_tool_result(
+                        call_id=tool_call.id,
+                        result={
+                            "error": f"Unknown tool {tool_call.name}"
+                        }
                     )
                 )
                 continue
 
             try:
-                args = json.loads(item.arguments)
-                result = tool["function"](**args)
+                result = tool["function"](**tool_call.arguments)
+                tool_results.append(
+                    self._build_tool_result(
+                        call_id=tool_call.call_id,
+                        result=result
+                    )
+                )
 
-            except Exception as exc:
+            except Exception as exc:  # update to application level errors
+                # convert to logger.exception
                 logger.error(
-                    "Tool execution failed | tool=%s",
-                    item.name
+                    "Tool failed | tool=%s | exc=%s",
+                    tool_call.name,
+                    exc.detail
                 )
-                result = {"error": "Tool execution failed."}
-
-            tools_output.append(
-                self._make_tool_output(
-                    call_id=item.call_id,
-                    output=result
+                tool_results.append(
+                    self._build_tool_result(
+                        call_id=tool_call.call_id,
+                        result={
+                            "error": f"Tool failed: {exc}."
+                        }
+                    )
                 )
-            )
+                continue
 
             logger.info(
                 "Tool completed | tool=%s",
-                item.name
+                tool_call.name
             )
 
-        return tools_output
+        return ToolResultMessage(results=tool_results)
