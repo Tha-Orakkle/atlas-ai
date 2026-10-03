@@ -1,10 +1,10 @@
 from atlas_ai import config
 from atlas_ai.errors import AtlasError
-from atlas_ai.llm.client import OpenAIClient
+from atlas_ai.llm.open_ai import OpenAIClient
+from atlas_ai.logging_config import configure_logging
 from atlas_ai.services.assistant import AssistantService
 from atlas_ai.tools.executor import ToolExecutor
 from atlas_ai.tools.registry import TOOLS
-from atlas_ai.logging_config import configure_logging
 
 
 def main() -> None:
