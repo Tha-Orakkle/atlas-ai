@@ -1,10 +1,15 @@
 import logging
-
 from uuid import uuid4
+
 from atlas_ai.errors import AtlasError
 from atlas_ai.llm.client import LLMClient
-from atlas_ai.tools.executor import ToolExecutor
+from atlas_ai.models import (
+    AssistantMessage,
+    DeveloperMessage,
+    UserMessage,
+)
 from atlas_ai.prompts import PROMPTS
+from atlas_ai.tools.executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -15,26 +20,29 @@ class AssistantService:
         llm_client: LLMClient,
         tool_executor: ToolExecutor
     ):
+        """
+        Initialize the service layer assistant with
+        the LLM client and the tool executor.
+        """
         self.client = llm_client
         self.tool_executor = tool_executor
-        self.context = []
-        self.add_to_context(
-            role="developer",
-            content=PROMPTS["main"]
-        )
+        self.conversation = [
+            DeveloperMessage(
+                content=PROMPTS["main"]
+            )
+        ]
 
-    def add_to_context(self, role: str, content: str) -> None:
+    def add_to_conversation(
+        self,
+        message: AssistantMessage | DeveloperMessage | UserMessage,
+    ) -> None:
         """
-        Adds input/response from user/assistant to the conversation.
+        Adds message to the conversation.
         Args:
-            - role (str): user or assistant.
-            - content (str): the actual input by user or response from
-              the assistant
+            - message: Message could be from the user,
+            developer or the assistant.
         """
-        self.context.append({
-            "role": role,
-            "content": content
-        })
+        self.conversation.append(message)
 
     def generate_response(self, user_input: str) -> str:
         """
@@ -47,38 +55,49 @@ class AssistantService:
 
         logger.info("Request started | request_id=%s", request_id)
 
-        self.add_to_context("user", user_input)
+        self.add_to_conversation(
+            UserMessage(
+                content=user_input
+            ))
 
-        input_list = self.context.copy()
+        context = self.conversation.copy()
 
         try:
             while True:
                 logger.info(
-                    "Calling LLM | request_id=%s",
+                    "Preparing request to LLM | request_id=%s",
                     request_id
                 )
 
                 response = self.client.generate(
-                    context=input_list,
+                    context=context,
                 )
 
-                input_list += response.output
-                tools_output = self.tool_executor.execute(response.output)
+                assistant_message = response.message
+                context.append(assistant_message)
 
-                if not tools_output:
+                if not assistant_message.tool_calls:
                     break
-                input_list += tools_output
 
-            self.add_to_context("assistant", response.output_text)
+                tool_result_message = self.tool_executor.execute(
+                    assistant_message.tool_calls
+                )
+
+                context.append(tool_result_message)
+
+            self.add_to_conversation(assistant_message)
 
             logger.info(
                 "Request completed | request_id=%s",
                 request_id
             )
 
-            return response.output_text
+            return assistant_message.text
 
-        except AtlasError as exc:
+        except AtlasError:
+            # remove last user input from conversation
+            self.conversation.pop()
+
             logger.error(
                 "Request failed | request_id=%s",
                 request_id
