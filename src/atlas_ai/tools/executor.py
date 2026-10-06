@@ -66,7 +66,7 @@ class ToolExecutor:
                     self._build_tool_result(
                         call_id=tool_call.call_id,
                         result={
-                            "error": f"Unknown tool {tool_call.name}"
+                            "error": f"Unknown tool: '{tool_call.name}'"
                         }
                     )
                 )
@@ -81,12 +81,12 @@ class ToolExecutor:
                     )
                 )
 
-            except Exception as exc:  # update to application level errors
+            except Exception as exc:  # update to application level errors  # noqa: BLE001
                 # convert to logger.exception
                 logger.error(
                     "Tool failed | tool=%s | exc=%s",
                     tool_call.name,
-                    exc.detail
+                    str(exc)
                 )
                 tool_results.append(
                     self._build_tool_result(
