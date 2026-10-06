@@ -1,7 +1,7 @@
 import logging
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock
 
 from atlas_ai.models import ToolCall, ToolResult, ToolResultMessage
 from atlas_ai.tools.executor import ToolExecutor
@@ -111,7 +111,7 @@ def test_unknown_tool_returns_application_level_error_result(executor):
         results=[
             ToolResult(
                 call_id="call_123",
-                result={"error": "Unknown tool unknown_tool"},
+                result={"error": "Unknown tool: 'unknown_tool'"},
             )
         ]
     )
