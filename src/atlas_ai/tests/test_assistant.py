@@ -9,12 +9,10 @@ from atlas_ai.models import (
     ToolCall,
     ToolResult,
     ToolResultMessage,
-    UserMessage,
 )
 from atlas_ai.services.assistant import AssistantService
 from atlas_ai.tools.executor import ToolExecutor
 from atlas_ai.tools.registry import TOOLS
-
 
 TOOL_EXECUTOR = ToolExecutor(tools_registry=TOOLS)
 
@@ -130,7 +128,7 @@ def test_generate_response_passes_tool_call_and_result_to_next_llm_call():
         results=[
             ToolResult(
                 call_id="call_123",
-                result={"result": 42},
+                result={"result": 4},
             )
         ]
     )
@@ -143,12 +141,11 @@ def test_generate_response_removes_user_input_when_llm_fails(caplog):
         TOOL_EXECUTOR,
     )
 
-    with pytest.raises(AtlasError):
-        with caplog.at_level(
-            logging.INFO,
-            logger="atlas_ai.services.assistant",
-        ):
-            assistant.generate_response("Hello")
+    with pytest.raises(AtlasError), caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.services.assistant",
+    ):
+        assistant.generate_response("Hello")
 
     assert len(assistant.conversation) == 1
     assert "Request started | request_id=" in caplog.text
