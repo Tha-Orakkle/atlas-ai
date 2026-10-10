@@ -24,8 +24,8 @@ class StreamError:
 
 
 StreamEvent = (
-    TextDelta,
-    ToolCallCompleted,
-    ResponseCompleted,
-    StreamError
+    TextDelta
+    | ToolCallCompleted
+    | ResponseCompleted
+    | StreamError
 )
