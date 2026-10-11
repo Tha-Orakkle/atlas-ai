@@ -10,7 +10,7 @@ class LLMClient(Protocol):
         self,
         context: list[ConversationMessage]
     ) -> LLMResponse:
-        """"Generate a response from the language model."""
+        """"Generate a complete response from the language model."""
         ...
 
 
@@ -19,5 +19,5 @@ class StreamingLLMClient(Protocol):
         self,
         context: list[ConversationMessage]
     ) -> Iterator[StreamEvent]:
-        """Receive LLM response incrementally"""
+        """Yield application-level events from a streamed response."""
         ...
