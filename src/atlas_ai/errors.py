@@ -53,7 +53,7 @@ class LLMBadRequestError(LLMError):
     retryable = False
 
 
-class LLMResponseError(LLMError):
+class LLMBadResponseError(LLMError):
     """Raised when the LLM returns an unusable response."""
 
 
