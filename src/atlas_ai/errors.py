@@ -57,6 +57,10 @@ class LLMBadResponseError(LLMError):
     """Raised when the LLM returns an unusable response."""
 
 
+class LLMResponseConsistencyError(LLMError):
+    """Raise when the LLM emits an inconsistent response"""
+
+
 # ====================================================
 # TOOL ERRORS
 # ====================================================
