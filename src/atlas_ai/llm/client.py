@@ -14,7 +14,7 @@ class LLMClient(Protocol):
         ...
 
 
-class StreamingLLMClient(Protocol):
+class StreamingLLMClient(LLMClient, Protocol):
     def stream(
         self,
         context: list[ConversationMessage]
