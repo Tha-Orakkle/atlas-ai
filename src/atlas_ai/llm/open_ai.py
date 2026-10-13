@@ -23,7 +23,7 @@ from atlas_ai.errors import (
     LLMResponseConsistencyError,
     LLMTimeoutError,
 )
-from atlas_ai.llm.client import LLMClient, StreamingLLMClient
+from atlas_ai.llm.client import StreamingLLMClient
 from atlas_ai.llm.streaming import (
     ResponseCompleted,
     StreamError,
@@ -46,7 +46,7 @@ from atlas_ai.reliability.retry import retry
 logger = logging.getLogger(__name__)
 
 
-class OpenAIClient(LLMClient, StreamingLLMClient):
+class OpenAIClient(StreamingLLMClient):
     """
     Client communicate with the OpenAI API using the
     OpenAI SDK.
