@@ -153,7 +153,7 @@ class AssistantService:
                     yield ResponseCompleted(message=final_message)
                     return
 
-                tool_result_message = self.tool_executor.excute(
+                tool_result_message = self.tool_executor.execute(
                     final_message.tool_calls
                 )
                 context.append(tool_result_message)
