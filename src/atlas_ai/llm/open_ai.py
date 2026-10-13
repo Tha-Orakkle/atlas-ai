@@ -20,6 +20,7 @@ from atlas_ai.errors import (
     LLMBadResponseError,
     LLMConnectionError,
     LLMRateLimitError,
+    LLMResponseConsistencyError,
     LLMTimeoutError,
 )
 from atlas_ai.llm.client import LLMClient, StreamingLLMClient
@@ -299,9 +300,12 @@ class OpenAIClient(LLMClient, StreamingLLMClient):
                 response = stream.get_final_response()
 
                 if response.status != "completed":
-                    raise LLMConnectionError(
-                        "The LLM stream did not complete successfully."
+                    yield StreamError(
+                        error=LLMConnectionError(
+                            "The LLM stream did not complete successfully."
+                        )
                     )
+                    return
 
                 if tool_calls:
                     final_message = AssistantMessage(
@@ -315,9 +319,13 @@ class OpenAIClient(LLMClient, StreamingLLMClient):
                     streamed_text = "".join(text_parts)
 
                     if final_message.text != streamed_text:
-                        raise LLMConnectionError(
-                            "Streamed text did not match the final response."
+                        yield StreamError(
+                            error=LLMResponseConsistencyError(
+                                "Streamed text did not match "
+                                "the final response."
+                            )
                         )
+                        return
 
                 yield ResponseCompleted(message=final_message)
 
@@ -330,21 +338,21 @@ class OpenAIClient(LLMClient, StreamingLLMClient):
                 )
             )
 
-        except APITimeoutError as exc:
+        except APITimeoutError:
             yield StreamError(
                 error=LLMTimeoutError(
                     "Request to LLM timed out."
                 )
             )
 
-        except APIConnectionError as exc:
+        except APIConnectionError:
             yield StreamError(
                 error=LLMConnectionError(
                     "Unable to connect to the LLM provider."
                 )
             )
 
-        except AuthenticationError as exc:
+        except AuthenticationError:
             yield StreamError(
                 error=LLMAuthenticationError(
                     "Unable to authenticate with the LLM provider."
