@@ -12,7 +12,7 @@ class ToolCall:
 @dataclass(frozen=True)
 class ToolResult:
     call_id: str
-    result: Any
+    result: dict[str: Any]
 
 
 @dataclass(frozen=True)
