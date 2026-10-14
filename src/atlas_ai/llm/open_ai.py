@@ -19,6 +19,7 @@ from atlas_ai.errors import (
     LLMBadRequestError,
     LLMBadResponseError,
     LLMConnectionError,
+    LLMIncompleteResponseError,
     LLMRateLimitError,
     LLMResponseConsistencyError,
     LLMTimeoutError,
@@ -56,7 +57,7 @@ class OpenAIClient(StreamingLLMClient):
         self,
         api_key: str,
         model: str,
-        tool_schema: dict[str, Any]
+        tool_schema: list[dict[str, Any]]
     ):
         """
         Initializes an openai client
@@ -301,7 +302,7 @@ class OpenAIClient(StreamingLLMClient):
 
                 if response.status != "completed":
                     yield StreamError(
-                        error=LLMConnectionError(
+                        error=LLMIncompleteResponseError(
                             "The LLM stream did not complete successfully."
                         )
                     )
