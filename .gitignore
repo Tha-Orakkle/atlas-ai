@@ -16,3 +16,6 @@ wheels/
 */check.py
 */stream.py
 */tools.py
+
+# remove old files
+old_*

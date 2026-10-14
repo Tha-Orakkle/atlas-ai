@@ -1,8 +1,18 @@
 import logging
+from collections.abc import Iterator
 from uuid import uuid4
 
-from atlas_ai.errors import AtlasError
-from atlas_ai.llm.client import LLMClient
+from atlas_ai.errors import (
+    AtlasError,
+    LLMBadResponseError,
+)
+from atlas_ai.llm.client import StreamingLLMClient
+from atlas_ai.llm.streaming import (
+    ResponseCompleted,
+    StreamError,
+    StreamEvent,
+    TextDelta,
+)
 from atlas_ai.models import (
     AssistantMessage,
     DeveloperMessage,
@@ -17,7 +27,7 @@ logger = logging.getLogger(__name__)
 class AssistantService:
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_client: StreamingLLMClient,
         tool_executor: ToolExecutor
     ):
         """
@@ -26,11 +36,8 @@ class AssistantService:
         """
         self.client = llm_client
         self.tool_executor = tool_executor
-        self.conversation = [
-            DeveloperMessage(
-                content=PROMPTS["main"]
-            )
-        ]
+        developer_message = DeveloperMessage(content=PROMPTS["main"])
+        self.conversation = [developer_message]
 
     def add_to_conversation(
         self,
@@ -48,17 +55,14 @@ class AssistantService:
         """
         Get responses from AI model. Execute tools if
         model makes tool calls.
-        Args:
-        - user_input: input by user
         """
         request_id = str(uuid4())
 
         logger.info("Request started | request_id=%s", request_id)
 
-        self.add_to_conversation(
-            UserMessage(
-                content=user_input
-            ))
+        user_message = UserMessage(content=user_input)
+
+        self.add_to_conversation(user_message)
 
         context = self.conversation.copy()
 
@@ -96,10 +100,70 @@ class AssistantService:
 
         except AtlasError:
             # remove last user input from conversation
-            self.conversation.pop()
+            if self.conversation and self.conversation[-1] == user_message:
+                self.conversation.pop()
 
             logger.error(
                 "Request failed | request_id=%s",
                 request_id
             )
             raise
+
+    def stream_response(self, user_input: str) -> Iterator[StreamEvent]:
+        """Stream a response, executing tool calls when necessary."""
+        request_id = str(uuid4())
+
+        logger.info("Streaming request started | request_id=%s", request_id)
+
+        user_message = UserMessage(content=user_input)
+        self.add_to_conversation(user_message)
+        context = self.conversation.copy()
+
+        try:
+            while True:
+                final_message = None
+
+                for event in self.client.stream(context):
+                    if isinstance(event, TextDelta):
+                        yield event
+
+                    elif isinstance(event, StreamError):
+                        self.conversation.pop()
+                        yield event
+                        return
+
+                    elif isinstance(event, ResponseCompleted):
+                        final_message = event.message
+
+                if final_message is None:
+                    raise LLMBadResponseError(
+                        "The stream ended without a completed response"
+                    )
+
+                context.append(final_message)
+
+                if not final_message.tool_calls:
+                    self.add_to_conversation(final_message)
+
+                    logger.info(
+                        "Streaming request completed | request_id=%s",
+                        request_id
+                    )
+
+                    yield ResponseCompleted(message=final_message)
+                    return
+
+                tool_result_message = self.tool_executor.execute(
+                    final_message.tool_calls
+                )
+                context.append(tool_result_message)
+
+        except AtlasError as exc:
+            if self.conversation and self.conversation[-1] == user_message:
+                self.conversation.pop()
+
+            logger.error(
+                "Streaming request failed | request_id=%s",
+                request_id
+            )
+            yield StreamError(error=exc)

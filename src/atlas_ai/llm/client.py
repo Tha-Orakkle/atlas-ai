@@ -1,5 +1,7 @@
+from collections.abc import Iterator
 from typing import Protocol
 
+from atlas_ai.llm.streaming import StreamEvent
 from atlas_ai.models import ConversationMessage, LLMResponse
 
 
@@ -8,5 +10,14 @@ class LLMClient(Protocol):
         self,
         context: list[ConversationMessage]
     ) -> LLMResponse:
-        """"Generate a response from the language model."""
+        """"Generate a complete response from the language model."""
+        ...
+
+
+class StreamingLLMClient(LLMClient, Protocol):
+    def stream(
+        self,
+        context: list[ConversationMessage]
+    ) -> Iterator[StreamEvent]:
+        """Yield application-level events from a streamed response."""
         ...

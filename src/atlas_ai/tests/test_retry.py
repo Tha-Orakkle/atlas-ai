@@ -1,15 +1,12 @@
-import pytest
 import logging
 
-from atlas_ai.reliability.retry import retry, RetryPolicy
-from atlas_ai.errors import (
-    AtlasError,
-    LLMRateLimitError,
-    LLMTimeoutError
-)
+import pytest
+
+from atlas_ai.errors import AtlasError, LLMRateLimitError, LLMTimeoutError
+from atlas_ai.reliability.retry import RetryPolicy, retry
 
 
-def test_succeddful_operation_runs_once():
+def test_successful_operation_runs_once():
     """
     Test that the reliability policy does not retry a
     successful operation.
