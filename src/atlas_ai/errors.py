@@ -61,6 +61,10 @@ class LLMResponseConsistencyError(LLMError):
     """Raise when the LLM emits an inconsistent response"""
 
 
+class LLMIncompleteResponseError(LLMError):
+    """Raise when the LLM emits an incomplete response"""
+
+
 # ====================================================
 # TOOL ERRORS
 # ====================================================
