@@ -1,3 +1,5 @@
+import asyncio
+
 from atlas_ai import config
 from atlas_ai.errors import AtlasError
 from atlas_ai.llm.open_ai import OpenAIClient
@@ -74,6 +76,37 @@ def run_atlas_streaming(assistant: AssistantService):
             print("\n")
 
 
+async def run_atlas_astreaming(assistant: AssistantService):
+    while True:
+        user_input = input("You: ")
+
+        if user_input.strip().lower() == "exit":
+            print("Goodbye.")
+            break
+
+        print("\nAtlas: ", end="", flush=True)
+        stream_error = None
+
+        try:
+            async for event in assistant.astream_response(user_input):
+                if isinstance(event, TextDelta):
+                    print(event.text, end="", flush=True)
+
+                elif isinstance(event, StreamError):
+                    stream_error = event.error
+                    break
+
+        except AtlasError as exc:
+            stream_error = exc
+
+        if stream_error is not None:
+            print(
+                f"\nAtlas encountered an error: {stream_error}\n"
+            )
+        else:
+            print("\n")
+
+
 def main() -> None:
     configure_logging()
     assistant = build_assistant()
@@ -81,8 +114,14 @@ def main() -> None:
     print("Atlas AI")
     print("Type 'exit' to quit.\n")
 
+    # run atlas synchronously without streaming LLM response
     # run_atlas(assistant=assistant)
-    run_atlas_streaming(assistant=assistant)
+
+    # run atlas synchronously while streaming LLM response
+    # run_atlas_streaming(assistant=assistant)
+
+    # run atlas asynchronously while streaming LLM response
+    asyncio.run(run_atlas_astreaming(assistant=assistant))
 
 
 if __name__ == "__main__":
