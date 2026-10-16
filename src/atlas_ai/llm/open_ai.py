@@ -1,12 +1,13 @@
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from openai import (
     APIConnectionError,
     APIStatusError,
     APITimeoutError,
+    AsyncOpenAI,
     AuthenticationError,
     BadRequestError,
     OpenAI,
@@ -24,7 +25,7 @@ from atlas_ai.errors import (
     LLMResponseConsistencyError,
     LLMTimeoutError,
 )
-from atlas_ai.llm.client import StreamingLLMClient
+from atlas_ai.llm.client import AssistantLLMClient
 from atlas_ai.llm.streaming import (
     ResponseCompleted,
     StreamError,
@@ -47,7 +48,7 @@ from atlas_ai.reliability.retry import retry
 logger = logging.getLogger(__name__)
 
 
-class OpenAIClient(StreamingLLMClient):
+class OpenAIClient(AssistantLLMClient):
     """
     Client communicate with the OpenAI API using the
     OpenAI SDK.
@@ -63,6 +64,10 @@ class OpenAIClient(StreamingLLMClient):
         Initializes an openai client
         """
         self.client = OpenAI(api_key=api_key, max_retries=0)
+        self.async_client = AsyncOpenAI(
+            api_key=api_key,
+            max_retries=0
+        )
         self.model = model
         self.tools_schema = tool_schema
 
@@ -378,5 +383,126 @@ class OpenAIClient(StreamingLLMClient):
             yield StreamError(
                 error=LLMBadResponseError(
                     f"Unable to interpret the streamed response: {exc}"
+                )
+            )
+
+    async def astream(
+        self,
+        context: list[ConversationMessage]
+    ) -> AsyncIterator[StreamEvent]:
+
+        tool_calls: list[ToolCall] = []
+        text_parts: list[str] = []
+
+        try:
+            openai_input = self._to_openai_input(context)
+
+            logger.info("Starting async OpenAI streaming request")
+
+            async with self.async_client.responses.stream(
+                model=self.model,
+                input=openai_input,
+                tools=self.tools_schema,
+            ) as stream:
+
+                async for event in stream:
+                    if event.type == "response.output_text.delta":
+                        text_parts.append(event.delta)
+                        yield TextDelta(text=event.delta)
+
+                    elif (
+                        event.type == "response.output_item.done"
+                        and event.item.type == "function_call"
+                    ):
+                        item = event.item
+
+                        tool_call = ToolCall(
+                            call_id=item.call_id,
+                            name=item.name,
+                            arguments=json.loads(item.arguments)
+                        )
+                        tool_calls.append(tool_call)
+                        yield ToolCallCompleted(tool_call=tool_call)
+
+                response = await stream.get_final_response()
+
+                if response.status != "completed":
+                    yield StreamError(
+                        error=LLMIncompleteResponseError(
+                            "The LLM stream did not complete successfully."
+                        )
+                    )
+                    return
+
+                if tool_calls:
+                    final_message = AssistantMessage(
+                        tool_calls=tool_calls
+                    )
+
+                else:
+                    final_message = self._from_openai_response(
+                        response=response
+                    ).message
+
+                    streamed_text = "".join(text_parts)
+
+                    if final_message.text != streamed_text:
+                        yield StreamError(
+                            error=LLMResponseConsistencyError(
+                                "Streamed text did not match "
+                                "the final response."
+                            )
+                        )
+                        return
+                yield ResponseCompleted(message=final_message)
+
+        except RateLimitError as exc:
+            retry_after = exc.response.headers.get("Retry-After")
+            yield StreamError(
+                error=LLMRateLimitError(
+                    "The LLM provider rate limit was exceeded.",
+                    retry_after=retry_after,
+                )
+            )
+
+        except APITimeoutError:
+            yield StreamError(
+                error=LLMTimeoutError(
+                    "Request to LLM timed out.",
+                )
+            )
+
+        except APIConnectionError:
+            yield StreamError(
+                error=LLMConnectionError(
+                    "Unable to connect to the LLM provider.",
+                )
+            )
+
+        except AuthenticationError:
+            yield StreamError(
+                error=LLMAuthenticationError(
+                    "Unable to authenticate with the LLM provider.",
+                )
+            )
+
+        except BadRequestError as exc:
+            yield StreamError(
+                error=LLMBadRequestError(
+                    f"Invalid request to LLM provider: {exc}",
+                )
+            )
+
+        except APIStatusError as exc:
+            yield StreamError(
+                error=LLMBadRequestError(
+                    f"LLM provider returned an error: {exc}",
+                )
+            )
+
+        except (json.JSONDecodeError, ValueError) as exc:
+            yield StreamError(
+                error=LLMBadResponseError(
+                    f"Unable to interpret the streamed response: {exc}",
                 )
             )
