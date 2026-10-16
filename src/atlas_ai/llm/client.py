@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Protocol
 
 from atlas_ai.llm.streaming import StreamEvent
@@ -20,4 +20,24 @@ class StreamingLLMClient(LLMClient, Protocol):
         context: list[ConversationMessage]
     ) -> Iterator[StreamEvent]:
         """Yield application-level events from a streamed response."""
+        ...
+
+
+class AsyncStreamingLLMClient(Protocol):
+    def astream(
+        self,
+        context: list[ConversationMessage]
+    ) -> AsyncIterator[StreamEvent]:
+        """Asynchronously streams events from language model."""
+        ...
+
+
+class AssistantLLMClient(StreamingLLMClient, Protocol):
+    def astream(
+        self,
+        context: list[ConversationMessage]
+    ) -> AsyncIterator[StreamEvent]:
+        """
+        Protocol for client with generate, stream and astream capabilities.
+        """
         ...
