@@ -39,6 +39,7 @@ from atlas_ai.models import AssistantMessage
 
 #     return assistant
 
+
 def configure_main(monkeypatch, events):
     """
     Configuration for asynchronous execution and
@@ -79,6 +80,7 @@ def configure_main(monkeypatch, events):
     )
 
     return assistant
+
 
 def test_main_prints_streamed_text(
     monkeypatch,
