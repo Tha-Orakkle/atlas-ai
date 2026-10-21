@@ -9,37 +9,76 @@ from atlas_ai.llm.streaming import (
 )
 from atlas_ai.models import AssistantMessage
 
+# def configure_main(monkeypatch, events):
+#     assistant = Mock()
+#     assistant.astream_response.return_value = iter(events)
+
+#     monkeypatch.setattr(
+#         main_module,
+#         "configure_logging",
+#         Mock(),
+#     )
+#     monkeypatch.setattr(
+#         main_module,
+#         "OpenAIClient",
+#         Mock(),
+#     )
+#     monkeypatch.setattr(
+#         main_module,
+#         "ToolExecutor",
+#         Mock(),
+#     )
+#     monkeypatch.setattr(
+#         main_module,
+#         "AssistantService",
+#         Mock(return_value=assistant),
+#     )
+
+#     monkeypatch.setattr(main_module.config, "OPENAI_API_KEY", "test-key")
+#     monkeypatch.setattr(main_module.config, "OPENAI_MODEL", "test-model")
+
+#     return assistant
 
 def configure_main(monkeypatch, events):
+    """
+    Configuration for asynchronous execution and
+    streaming communication
+    """
     assistant = Mock()
-    assistant.stream_response.return_value = iter(events)
+
+    async def fake_astream_response(user_input):
+        for event in events:
+            yield event
+
+    assistant.astream_response = Mock(
+        side_effect=fake_astream_response
+    )
 
     monkeypatch.setattr(
         main_module,
         "configure_logging",
         Mock(),
     )
-    monkeypatch.setattr(
-        main_module,
-        "OpenAIClient",
-        Mock(),
-    )
-    monkeypatch.setattr(
-        main_module,
-        "ToolExecutor",
-        Mock(),
-    )
+    monkeypatch.setattr(main_module, "OpenAIClient", Mock())
+    monkeypatch.setattr(main_module, "ToolExecutor", Mock())
     monkeypatch.setattr(
         main_module,
         "AssistantService",
         Mock(return_value=assistant),
     )
 
-    monkeypatch.setattr(main_module.config, "OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr(main_module.config, "OPENAI_MODEL", "test-model")
+    monkeypatch.setattr(
+        main_module.config,
+        "OPENAI_API_KEY",
+        "test-key",
+    )
+    monkeypatch.setattr(
+        main_module.config,
+        "OPENAI_MODEL",
+        "test-model",
+    )
 
     return assistant
-
 
 def test_main_prints_streamed_text(
     monkeypatch,
@@ -64,7 +103,7 @@ def test_main_prints_streamed_text(
 
     assert "Atlas: Hello world." in output
     assert "Goodbye." in output
-    assistant.stream_response.assert_called_once_with("Say hello.")
+    assistant.astream_response.assert_called_once_with("Say hello.")
 
 
 def test_main_displays_stream_error(
@@ -88,7 +127,7 @@ def test_main_displays_stream_error(
 
     assert "Partial answer" in output
     assert "Atlas encountered an error: Provider unavailable" in output
-    assistant.stream_response.assert_called_once_with("Hello.")
+    assistant.astream_response.assert_called_once_with("Hello.")
 
 
 def test_main_handles_atlas_error_raised_during_streaming(
@@ -96,7 +135,7 @@ def test_main_handles_atlas_error_raised_during_streaming(
     capsys,
 ):
     assistant = configure_main(monkeypatch, [])
-    assistant.stream_response.side_effect = AtlasError("Unexpected failure")
+    assistant.astream_response.side_effect = AtlasError("Unexpected failure")
 
     inputs = iter(["Hello.", "exit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
@@ -118,4 +157,4 @@ def test_main_exits_without_starting_a_stream(
     main_module.main()
 
     assert "Goodbye." in capsys.readouterr().out
-    assistant.stream_response.assert_not_called()
+    assistant.astream_response.assert_not_called()
