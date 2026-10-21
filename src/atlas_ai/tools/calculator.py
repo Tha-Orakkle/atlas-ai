@@ -89,7 +89,7 @@ def calculate(expression: str) -> dict[str, int | float | str]:
 
     try:
         result = evaluate(tree.body)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {"error": f"Unable to perform operation: {exc}"}
 
     return {"result": result}
