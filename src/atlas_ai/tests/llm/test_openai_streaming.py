@@ -1,10 +1,11 @@
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
 import atlas_ai.llm.open_ai as openai_module
 from atlas_ai.errors import (
     LLMBadResponseError,
-    LLMConnectionError,
+    LLMIncompleteResponseError,
     LLMRateLimitError,
     LLMResponseConsistencyError,
     LLMTimeoutError,
@@ -214,7 +215,7 @@ def test_stream_emits_timeout_error(monkeypatch, openai_client):
     assert isinstance(events[0].error, LLMTimeoutError)
 
 
-def test_stream_emits_connection_error_when_response_is_not_completed(
+def test_stream_emits_error_when_response_is_incomplete(
     openai_client
 ):
     configure_stream(
@@ -227,7 +228,7 @@ def test_stream_emits_connection_error_when_response_is_not_completed(
     assert isinstance(events[-1], StreamError)
 
     error = events[-1].error
-    assert isinstance(error, LLMConnectionError)
+    assert isinstance(error, LLMIncompleteResponseError)
     assert "did not complete successfully" in str(error)
 
 
@@ -281,3 +282,16 @@ def test_stream_does_not_use_retry_wrapper(
 
     assert isinstance(events[-1], ResponseCompleted)
     retry_mock.assert_not_called()
+
+
+def test_stream_logs_calling_llm(caplog, openai_client):
+    configure_stream(
+        openai_client,
+        events=[],
+        response=make_response()
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
+        list(openai_client.stream([UserMessage(content="Hello")]))
+
+    assert "Starting OpenAI streaming request" in caplog.text
