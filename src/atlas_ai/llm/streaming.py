@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from atlas_ai.models import AssistantMessage, ToolCall
+from atlas_ai.models import AssistantMessage, TokenUsage, ToolCall
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,7 @@ class ToolCallCompleted:
 @dataclass(frozen=True)
 class ResponseCompleted:
     message: AssistantMessage
+    usage: TokenUsage | None = None
 
 
 @dataclass(frozen=True)
