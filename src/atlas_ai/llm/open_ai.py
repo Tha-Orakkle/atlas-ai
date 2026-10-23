@@ -13,7 +13,7 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
-from openai.types.responses.response import Response
+from openai.types.responses.response import Response, ResponseUsage
 
 from atlas_ai.errors import (
     LLMAuthenticationError,
@@ -38,6 +38,7 @@ from atlas_ai.models import (
     ConversationMessage,
     DeveloperMessage,
     LLMResponse,
+    TokenUsage,
     ToolCall,
     ToolResult,
     ToolResultMessage,
@@ -169,6 +170,29 @@ class OpenAIClient(AssistantLLMClient):
 
         return openai_input
 
+    def _from_openai_usage(
+        self,
+        usage: ResponseUsage
+    ) -> TokenUsage | None:
+        """Translate provider usage into Atlas's application model."""
+        if usage is None:
+            return None
+
+        input_details = getattr(usage, "input_tokens_details", None)
+        output_details = getattr(usage, "output_tokens_details", None)
+
+        return TokenUsage(
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            cached_input_tokens=(
+                getattr(input_details, "cached_tokens", 0)
+            ),
+            reasoning_tokens=(
+                getattr(output_details, "reasoning_tokens", 0)
+            ),
+        )
+
     def _from_openai_response(
         self,
         response: Response
@@ -196,7 +220,10 @@ class OpenAIClient(AssistantLLMClient):
             )
 
         return LLMResponse(
-            message=assistant_message
+            message=assistant_message,
+            usage=self._from_openai_usage(
+                getattr(response, "usage", None)
+            ),
         )
 
     def generate_response(
@@ -313,6 +340,10 @@ class OpenAIClient(AssistantLLMClient):
                     )
                     return
 
+                usage = self._from_openai_usage(
+                    getattr(response, "usage", None)
+                )
+
                 if tool_calls:
                     final_message = AssistantMessage(
                         tool_calls=tool_calls
@@ -333,7 +364,10 @@ class OpenAIClient(AssistantLLMClient):
                         )
                         return
 
-                yield ResponseCompleted(message=final_message)
+                yield ResponseCompleted(
+                    message=final_message,
+                    usage=usage
+                )
 
         except RateLimitError as exc:
             retry_after = exc.response.headers.get("Retry-After")
@@ -434,6 +468,10 @@ class OpenAIClient(AssistantLLMClient):
                     )
                     return
 
+                usage = self._from_openai_usage(
+                    getattr(response, "usage", None)
+                )
+
                 if tool_calls:
                     final_message = AssistantMessage(
                         tool_calls=tool_calls
@@ -454,7 +492,10 @@ class OpenAIClient(AssistantLLMClient):
                             )
                         )
                         return
-                yield ResponseCompleted(message=final_message)
+                yield ResponseCompleted(
+                    message=final_message,
+                    usage=usage
+                )
 
         except RateLimitError as exc:
             retry_after = exc.response.headers.get("Retry-After")
