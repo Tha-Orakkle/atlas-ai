@@ -19,3 +19,4 @@ wheels/
 
 # remove old files
 old_*
+*.log
