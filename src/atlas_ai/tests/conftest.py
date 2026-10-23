@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from atlas_ai.llm.open_ai import OpenAIClient
+from atlas_ai.tools.executor import ToolExecutor
 
 
 @pytest.fixture
@@ -13,3 +14,8 @@ def openai_client():
     client.client = MagicMock()
     client.async_client = MagicMock()
     return client
+
+
+@pytest.fixture
+def tool_executor():
+    return MagicMock(spec=ToolExecutor)
