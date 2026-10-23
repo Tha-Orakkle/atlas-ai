@@ -18,6 +18,7 @@ from atlas_ai.llm.streaming import (
 )
 from atlas_ai.models import (
     AssistantMessage,
+    TokenUsage,
     ToolCall,
     UserMessage,
 )
@@ -27,12 +28,14 @@ def make_response(
     *,
     status="completed",
     output_text="",
-    output=None
+    output=None,
+    usage=None,
 ):
     return SimpleNamespace(
         status=status,
         output_text=output_text,
-        output=output or []
+        output=output or [],
+        usage=usage,
     )
 
 
@@ -57,6 +60,18 @@ def collect(async_iterator):
 
 
 def test_astream_yields_text_deltas_and_completion(openai_client):
+    usage = SimpleNamespace(
+        input_tokens=100,
+        output_tokens=20,
+        total_tokens=120,
+        input_tokens_details=SimpleNamespace(cached_tokens=30),
+        output_tokens_details=SimpleNamespace(reasoning_tokens=5)
+    )
+
+    response = make_response(
+        output_text="Hello world.",
+        usage=usage
+    )
 
     configure_async_stream(
         openai_client,
@@ -70,11 +85,7 @@ def test_astream_yields_text_deltas_and_completion(openai_client):
                 delta="world.",
             ),
         ],
-        response=SimpleNamespace(
-            status="completed",
-            output_text="Hello world.",
-            output=[],
-        ),
+        response=response,
     )
 
     events = collect(
@@ -85,7 +96,14 @@ def test_astream_yields_text_deltas_and_completion(openai_client):
         TextDelta(text="Hello "),
         TextDelta(text="world."),
         ResponseCompleted(
-            message=AssistantMessage(text="Hello world.")
+            message=AssistantMessage(text="Hello world."),
+            usage=TokenUsage(
+                input_tokens=100,
+                output_tokens=20,
+                total_tokens=120,
+                cached_input_tokens=30,
+                reasoning_tokens=5
+            )
         ),
     ]
 
