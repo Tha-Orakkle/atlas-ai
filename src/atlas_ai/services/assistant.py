@@ -319,7 +319,10 @@ class AssistantService:
                         request_id
                     )
 
-                    yield ResponseCompleted(message=final_message)
+                    yield ResponseCompleted(
+                        message=final_message,
+                        usage=total_usage
+                    )
                     return
 
                 # Move synchronous ToolExecutor off the event loop.
