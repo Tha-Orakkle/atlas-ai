@@ -1,11 +1,10 @@
 import json
 from types import SimpleNamespace
-from unittest.mock import Mock
 
-from atlas_ai.llm.open_ai import OpenAIClient
 from atlas_ai.models import (
     AssistantMessage,
     DeveloperMessage,
+    TokenUsage,
     ToolCall,
     ToolResult,
     ToolResultMessage,
@@ -13,17 +12,7 @@ from atlas_ai.models import (
 )
 
 
-def make_client():
-    client = object.__new__(OpenAIClient)
-    client.model = "gpt-test"
-    client.tools_schema = [{"type": "function", "name": "calculate"}]
-    client.client = Mock()
-    return client
-
-
-def test_translates_application_context_to_openai_input():
-    client = make_client()
-
+def test_translates_application_context_to_openai_input(openai_client):
     context = [
         DeveloperMessage(content="You are Atlas."),
         UserMessage(content="What is 2 + 2?"),
@@ -46,7 +35,7 @@ def test_translates_application_context_to_openai_input():
         ),
     ]
 
-    result = client._to_openai_input(context)
+    result = openai_client._to_openai_input(context)
 
     assert result == [
         {
@@ -71,10 +60,8 @@ def test_translates_application_context_to_openai_input():
     ]
 
 
-def test_translates_final_assistant_message():
-    client = make_client()
-
-    result = client._to_openai_input(
+def test_translates_final_assistant_message(openai_client):
+    result = openai_client._to_openai_input(
         [AssistantMessage(text="The answer is 4.")]
     )
 
@@ -86,9 +73,9 @@ def test_translates_final_assistant_message():
     ]
 
 
-def test_translates_openai_tool_call_response_to_application_response():
-    client = make_client()
-
+def test_translates_openai_tool_call_response_to_application_response(
+    openai_client
+):
     response = SimpleNamespace(
         output=[
             SimpleNamespace(
@@ -101,7 +88,7 @@ def test_translates_openai_tool_call_response_to_application_response():
         output_text="",
     )
 
-    result = client._from_openai_response(response)
+    result = openai_client._from_openai_response(response)
 
     assert result.message == AssistantMessage(
         tool_calls=[
@@ -114,9 +101,9 @@ def test_translates_openai_tool_call_response_to_application_response():
     )
 
 
-def test_translates_openai_final_response_to_application_response():
-    client = make_client()
-
+def test_translates_openai_final_response_to_application_response(
+    openai_client
+):
     response = SimpleNamespace(
         output=[
             SimpleNamespace(
@@ -127,16 +114,17 @@ def test_translates_openai_final_response_to_application_response():
         output_text="The answer is 4.",
     )
 
-    result = client._from_openai_response(response)
+    result = openai_client._from_openai_response(response)
 
     assert result.message == AssistantMessage(
         text="The answer is 4."
     )
 
 
-def test_generate_reconstructs_tool_call_and_result_for_next_request():
-    client = make_client()
-    client.client.responses.create.return_value = SimpleNamespace(
+def test_generate_reconstructs_tool_call_and_result_for_next_request(
+    openai_client
+):
+    openai_client.client.responses.create.return_value = SimpleNamespace(
         output=[
             SimpleNamespace(
                 type="message",
@@ -167,9 +155,9 @@ def test_generate_reconstructs_tool_call_and_result_for_next_request():
         ),
     ]
 
-    result = client.generate_response(context)
+    result = openai_client.generate_response(context)
 
-    client.client.responses.create.assert_called_once_with(
+    openai_client.client.responses.create.assert_called_once_with(
         model="gpt-test",
         input=[
             {
@@ -188,9 +176,70 @@ def test_generate_reconstructs_tool_call_and_result_for_next_request():
                 "output": json.dumps({"result": 4}),
             },
         ],
-        tools=client.tools_schema,
+        tools=openai_client.tools_schema,
     )
 
     assert result.message == AssistantMessage(
         text="The answer is 4."
+    )
+
+
+def test_translates_openai_usage_to_token_usage(openai_client):
+    response = SimpleNamespace(
+        output=[],
+        output_text="Hello.",
+        usage=SimpleNamespace(
+            input_tokens=100,
+            output_tokens=20,
+            total_tokens=120,
+            input_tokens_details=SimpleNamespace(
+                cached_tokens=30,
+            ),
+            output_tokens_details=SimpleNamespace(
+                reasoning_tokens=5,
+            ),
+        ),
+    )
+
+    result = openai_client._from_openai_response(response)
+
+    assert result.usage == TokenUsage(
+        input_tokens=100,
+        output_tokens=20,
+        total_tokens=120,
+        cached_input_tokens=30,
+        reasoning_tokens=5,
+    )
+
+
+def test_usage_is_none_when_provider_does_not_return_it(openai_client):
+    response = SimpleNamespace(
+        output=[],
+        output_text="Hello.",
+    )
+
+    result = openai_client._from_openai_response(response)
+
+    assert result.usage is None
+
+
+def test_usage_details_default_to_zero_when_absent(openai_client):
+    response = SimpleNamespace(
+        output=[],
+        output_text="Hello.",
+        usage=SimpleNamespace(
+            input_tokens=100,
+            output_tokens=20,
+            total_tokens=120,
+        ),
+    )
+
+    result = openai_client._from_openai_response(response)
+
+    assert result.usage == TokenUsage(
+        input_tokens=100,
+        output_tokens=20,
+        total_tokens=120,
+        cached_input_tokens=0,
+        reasoning_tokens=0,
     )
