@@ -36,6 +36,15 @@ class UserMessage:
     content: str
 
 
+@dataclass(frozen=True)
+class TokenUsage:
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cached_input_tokens: int = 0
+    reasoning_tokens: int = 0
+
+
 ConversationMessage = (
     DeveloperMessage
     | UserMessage
@@ -47,3 +56,4 @@ ConversationMessage = (
 @dataclass(frozen=True)
 class LLMResponse:
     message: AssistantMessage
+    usage: TokenUsage | None = None
