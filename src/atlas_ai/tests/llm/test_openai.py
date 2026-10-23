@@ -124,6 +124,14 @@ def test_translates_openai_final_response_to_application_response(
 def test_generate_reconstructs_tool_call_and_result_for_next_request(
     openai_client
 ):
+    usage = SimpleNamespace(
+        input_tokens=100,
+        output_tokens=20,
+        total_tokens=120,
+        input_tokens_details=SimpleNamespace(cached_tokens=30),
+        output_tokens_details=SimpleNamespace(reasoning_tokens=5)
+    )
+
     openai_client.client.responses.create.return_value = SimpleNamespace(
         output=[
             SimpleNamespace(
@@ -132,6 +140,7 @@ def test_generate_reconstructs_tool_call_and_result_for_next_request(
             )
         ],
         output_text="The answer is 4.",
+        usage=usage,
     )
 
     context = [
@@ -181,6 +190,13 @@ def test_generate_reconstructs_tool_call_and_result_for_next_request(
 
     assert result.message == AssistantMessage(
         text="The answer is 4."
+    )
+    assert result.usage == TokenUsage(
+        input_tokens=100,
+        output_tokens=20,
+        total_tokens=120,
+        cached_input_tokens=30,
+        reasoning_tokens=5
     )
 
 
