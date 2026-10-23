@@ -6,6 +6,7 @@ from atlas_ai.errors import AtlasError
 from atlas_ai.models import (
     AssistantMessage,
     LLMResponse,
+    TokenUsage,
     ToolCall,
     ToolResult,
     ToolResultMessage,
@@ -13,8 +14,6 @@ from atlas_ai.models import (
 from atlas_ai.services.assistant import AssistantService
 from atlas_ai.tools.executor import ToolExecutor
 from atlas_ai.tools.registry import TOOLS
-
-TOOL_EXECUTOR = ToolExecutor(tools_registry=TOOLS)
 
 
 class FakeLLMClient:
@@ -32,7 +31,9 @@ class FakeLLMClient:
         return next(self.responses)
 
 
-def test_generate_response_logs_request_start_and_completion(caplog):
+def test_generate_response_logs_request_start_and_completion(
+    caplog, tool_executor
+):
     client = FakeLLMClient(
         responses=[
             LLMResponse(
@@ -40,7 +41,7 @@ def test_generate_response_logs_request_start_and_completion(caplog):
             )
         ]
     )
-    assistant = AssistantService(client, TOOL_EXECUTOR)
+    assistant = AssistantService(client, tool_executor)
 
     with caplog.at_level(
         logging.INFO,
@@ -54,7 +55,9 @@ def test_generate_response_logs_request_start_and_completion(caplog):
     assert "Request completed | request_id=" in caplog.text
 
 
-def test_generate_response_persists_only_completed_assistant_turn():
+def test_generate_response_persists_only_completed_assistant_turn(
+    tool_executor
+):
     client = FakeLLMClient(
         responses=[
             LLMResponse(
@@ -73,7 +76,7 @@ def test_generate_response_persists_only_completed_assistant_turn():
             ),
         ]
     )
-    assistant = AssistantService(client, TOOL_EXECUTOR)
+    assistant = AssistantService(client, tool_executor)
 
     result = assistant.generate_response("What is 2 + 2?")
 
@@ -88,6 +91,8 @@ def test_generate_response_persists_only_completed_assistant_turn():
 
 
 def test_generate_response_passes_tool_call_and_result_to_next_llm_call():
+    tool_executor = ToolExecutor(tools_registry=TOOLS)
+
     client = FakeLLMClient(
         responses=[
             LLMResponse(
@@ -106,7 +111,7 @@ def test_generate_response_passes_tool_call_and_result_to_next_llm_call():
             ),
         ]
     )
-    assistant = AssistantService(client, TOOL_EXECUTOR)
+    assistant = AssistantService(client, tool_executor)
 
     result = assistant.generate_response("What is 2 + 2?")
 
@@ -134,11 +139,13 @@ def test_generate_response_passes_tool_call_and_result_to_next_llm_call():
     )
 
 
-def test_generate_response_removes_user_input_when_llm_fails(caplog):
+def test_generate_response_removes_user_input_when_llm_fails(
+    caplog, tool_executor
+):
     error = AtlasError("LLM unavailable")
     assistant = AssistantService(
         FakeLLMClient(error=error),
-        TOOL_EXECUTOR,
+        tool_executor,
     )
 
     with pytest.raises(AtlasError), caplog.at_level(
@@ -151,3 +158,39 @@ def test_generate_response_removes_user_input_when_llm_fails(caplog):
     assert "Request started | request_id=" in caplog.text
     assert "Preparing request to LLM | request_id=" in caplog.text
     assert "Request failed | request_id=" in caplog.text
+
+
+def test_generate_response_logs_aggregate_usage_across_tool_calls(
+    caplog, tool_executor
+):
+    client = FakeLLMClient(
+        responses=[
+            LLMResponse(
+                message=AssistantMessage(
+                    tool_calls=[
+                        ToolCall(
+                            call_id="call_123",
+                            name="calculate",
+                            arguments={"expression": "2 + 2"},
+                        )
+                    ]
+                ),
+                usage=TokenUsage(100, 20, 120),
+            ),
+            LLMResponse(
+                message=AssistantMessage(text="4"),
+                usage=TokenUsage(150, 30, 180),
+            ),
+        ]
+    )
+    assistant = AssistantService(client, tool_executor)
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.services.assistant",
+    ):
+        assistant.generate_response("What is 2 + 2?")
+
+    assert "input_tokens=250" in caplog.text
+    assert "output_tokens=50" in caplog.text
+    assert "total_tokens=300" in caplog.text

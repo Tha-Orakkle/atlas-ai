@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from unittest.mock import Mock
 
 from atlas_ai.llm.streaming import (
@@ -8,6 +9,7 @@ from atlas_ai.llm.streaming import (
 )
 from atlas_ai.models import (
     AssistantMessage,
+    TokenUsage,
     ToolCall,
     ToolResult,
     ToolResultMessage,
@@ -115,3 +117,42 @@ def test_astream_response_stops_after_stream_error():
 
     assert events == [error]
     assert len(assistant.conversation) == 1
+
+
+def test_astream_response_logs_aggregate_usage_across_tool_calls(
+    caplog, tool_executor
+):
+
+    events = [
+        [
+            ResponseCompleted(
+                message=AssistantMessage(
+                    tool_calls=[ToolCall(
+                        call_id="call_123",
+                        name="calculate",
+                        arguments={"expression": "2 + 2"},
+                    )]
+                ),
+                usage=TokenUsage(100, 20, 120),
+            )
+        ],
+        [
+            ResponseCompleted(
+                message=AssistantMessage(text="4"),
+                usage=TokenUsage(150, 30, 180),
+            )
+        ]
+    ]
+
+    client = FakeAsyncLLMClient(events)
+    assistant = AssistantService(client, tool_executor)
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.services.assistant",
+    ):
+        collect(assistant.astream_response("What is 2 + 2?"))
+
+    assert "input_tokens=250" in caplog.text
+    assert "output_tokens=50" in caplog.text
+    assert "total_tokens=300" in caplog.text

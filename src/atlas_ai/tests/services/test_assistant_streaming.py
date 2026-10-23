@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Iterator, Sequence
-from unittest.mock import Mock
 
 import pytest
 
@@ -17,16 +16,13 @@ from atlas_ai.llm.streaming import (
 )
 from atlas_ai.models import (
     AssistantMessage,
+    TokenUsage,
     ToolCall,
     ToolResult,
     ToolResultMessage,
     UserMessage,
 )
 from atlas_ai.services.assistant import AssistantService
-from atlas_ai.tools.executor import ToolExecutor
-from atlas_ai.tools.registry import TOOLS
-
-TOOL_EXECUTOR = ToolExecutor(tools_registry=TOOLS)
 
 
 class FakeStreamingLLMClient:
@@ -41,11 +37,6 @@ class FakeStreamingLLMClient:
     def stream(self, context) -> Iterator[StreamEvent]:
         self.contexts.append(context.copy())
         yield from next(self.events)
-
-
-@pytest.fixture
-def tool_executor():
-    return Mock(spec=ToolExecutor)
 
 
 @pytest.fixture
@@ -313,3 +304,42 @@ def test_stream_response_logs_failed_request(
 
     assert "Streaming request started | request_id=" in caplog.text
     assert "Streaming request failed | request_id=" in caplog.text
+
+
+def test_stream_response_logs_aggregate_usage_across_tool_calls(
+    caplog, tool_executor
+):
+
+    events = [
+        [
+            ResponseCompleted(
+                message=AssistantMessage(
+                    tool_calls=[ToolCall(
+                        call_id="call_123",
+                        name="calculate",
+                        arguments={"expression": "2 + 2"},
+                    )]
+                ),
+                usage=TokenUsage(100, 20, 120),
+            )
+        ],
+        [
+            ResponseCompleted(
+                message=AssistantMessage(text="4"),
+                usage=TokenUsage(150, 30, 180),
+            )
+        ]
+    ]
+
+    client = FakeStreamingLLMClient(events)
+    assistant = AssistantService(client, tool_executor)
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.services.assistant",
+    ):
+        list(assistant.stream_response("What is 2 + 2?"))
+
+    assert "input_tokens=250" in caplog.text
+    assert "output_tokens=50" in caplog.text
+    assert "total_tokens=300" in caplog.text
