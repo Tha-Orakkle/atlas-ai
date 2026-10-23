@@ -17,12 +17,30 @@ from atlas_ai.llm.streaming import (
 from atlas_ai.models import (
     AssistantMessage,
     DeveloperMessage,
+    TokenUsage,
     UserMessage,
 )
 from atlas_ai.prompts import PROMPTS
 from atlas_ai.tools.executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
+
+
+def _aggregate_usage(
+        usages: list[TokenUsage | None]
+) -> TokenUsage | None:
+    if not usages or any(usage is None for usage in usages):
+        return None
+
+    known_usages = [usage for usage in usages if usage is not None]
+
+    return TokenUsage(
+        input_tokens=sum(u.input_tokens for u in known_usages),
+        output_tokens=sum(u.output_tokens for u in known_usages),
+        total_tokens=sum(u.total_tokens for u in known_usages),
+        cached_input_tokens=sum(u.cached_input_tokens for u in known_usages),
+        reasoning_tokens=sum(u.reasoning_tokens for u in known_usages),
+    )
 
 
 class AssistantService:
@@ -67,6 +85,8 @@ class AssistantService:
 
         context = self.conversation.copy()
 
+        usages: list[TokenUsage | None] = []
+
         try:
             while True:
                 logger.info(
@@ -77,6 +97,8 @@ class AssistantService:
                 response = self.client.generate(
                     context=context,
                 )
+
+                usages.append(response.usage)
 
                 assistant_message = response.message
                 context.append(assistant_message)
@@ -91,6 +113,28 @@ class AssistantService:
                 context.append(tool_result_message)
 
             self.add_to_conversation(assistant_message)
+
+            total_usage = _aggregate_usage(usages)
+
+            if total_usage is None:
+                logger.info(
+                    "Interaction usage unavailable | request_id=%s",
+                    request_id
+                )
+            else:
+                logger.info(
+                    (
+                        "Interation usage | request_id=%s "
+                        "input_tokens=%d output_tokens=%d total_tokens=%d "
+                        "cached_input_tokens=%d reasoning_tokens=%d"
+                    ),
+                    request_id,
+                    total_usage.input_tokens,
+                    total_usage.output_tokens,
+                    total_usage.total_tokens,
+                    total_usage.cached_input_tokens,
+                    total_usage.reasoning_tokens,
+                )
 
             logger.info(
                 "Request completed | request_id=%s",
@@ -120,6 +164,8 @@ class AssistantService:
         self.add_to_conversation(user_message)
         context = self.conversation.copy()
 
+        usages: list[TokenUsage | None] = []
+
         try:
             while True:
                 final_message = None
@@ -135,6 +181,7 @@ class AssistantService:
 
                     elif isinstance(event, ResponseCompleted):
                         final_message = event.message
+                        usages.append(event.usage)
 
                 if final_message is None:
                     raise LLMBadResponseError(
@@ -146,12 +193,38 @@ class AssistantService:
                 if not final_message.tool_calls:
                     self.add_to_conversation(final_message)
 
+                    total_usage = _aggregate_usage(usages)
+
+                    if total_usage is None:
+                        logger.info(
+                            "Interaction usage unavailable | request_id=%s",
+                            request_id
+                        )
+                    else:
+                        logger.info(
+                            (
+                                "Interation usage | request_id=%s "
+                                "input_tokens=%d output_tokens=%d "
+                                "total_tokens=%d cached_input_tokens=%d "
+                                "reasoning_tokens=%d"
+                            ),
+                            request_id,
+                            total_usage.input_tokens,
+                            total_usage.output_tokens,
+                            total_usage.total_tokens,
+                            total_usage.cached_input_tokens,
+                            total_usage.reasoning_tokens,
+                        )
+
                     logger.info(
                         "Streaming request completed | request_id=%s",
                         request_id
                     )
 
-                    yield ResponseCompleted(message=final_message)
+                    yield ResponseCompleted(
+                        message=final_message,
+                        usage=total_usage,
+                    )
                     return
 
                 tool_result_message = self.tool_executor.execute(
@@ -185,6 +258,8 @@ class AssistantService:
         self.add_to_conversation(user_message)
         context = self.conversation.copy()
 
+        usages: list[TokenUsage | None] = []
+
         try:
             while True:
                 final_message = None
@@ -204,6 +279,7 @@ class AssistantService:
 
                     elif isinstance(event, ResponseCompleted):
                         final_message = event.message
+                        usages.append(event.usage)
 
                 if final_message is None:
                     raise LLMBadResponseError(
@@ -214,6 +290,30 @@ class AssistantService:
 
                 if not final_message.tool_calls:
                     self.add_to_conversation(final_message)
+
+                    total_usage = _aggregate_usage(usages)
+
+                    if total_usage is None:
+                        logger.info(
+                            "Interaction usage unavailable | request_id=%s",
+                            request_id
+                        )
+                    else:
+                        logger.info(
+                            (
+                                "Interation usage | request_id=%s "
+                                "input_tokens=%d output_tokens=%d "
+                                "total_tokens=%d cached_input_tokens=%d "
+                                "reasoning_tokens=%d"
+                            ),
+                            request_id,
+                            total_usage.input_tokens,
+                            total_usage.output_tokens,
+                            total_usage.total_tokens,
+                            total_usage.cached_input_tokens,
+                            total_usage.reasoning_tokens,
+                        )
+
                     logger.info(
                         "Async streaming request completed | request_id=%s",
                         request_id
