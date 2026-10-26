@@ -57,9 +57,10 @@ class AssistantService:
         Initialize the service layer assistant with
         the LLM client and the tool executor.
         """
+        self.provider = "openai"
         self.client = llm_client
         self.tool_executor = tool_executor
-        self.model = model
+        self.model = f"{self.provider}:{model}"
         self.cost_calculator = cost_calculator
 
         developer_message = DeveloperMessage(content=PROMPTS["main"])
@@ -93,10 +94,10 @@ class AssistantService:
             estimated_cost = self.cost_calculator.estimate(
                 self.model, usage
             )
-        except ValueError:
+        except ValueError as exc:
             logger.error(
-                "Interaction cost estimation failed | request_id=%s",
-                request_id
+                "Interaction cost estimation failed | request_id=%s | %s",
+                request_id, str(exc)
             )
             return
 
