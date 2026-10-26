@@ -1,6 +1,8 @@
 import asyncio
+from decimal import Decimal
 
 from atlas_ai import config
+from atlas_ai.cost import CostCalculator, ModelPricing
 from atlas_ai.errors import AtlasError
 from atlas_ai.llm.open_ai import OpenAIClient
 from atlas_ai.llm.streaming import StreamError, TextDelta
@@ -8,6 +10,27 @@ from atlas_ai.logging_config import configure_logging
 from atlas_ai.services.assistant import AssistantService
 from atlas_ai.tools.executor import ToolExecutor
 from atlas_ai.tools.registry import TOOLS
+
+
+def build_cost_calculator() -> CostCalculator:
+    pricing = {}
+
+    input_price = config.OPENAI_INPUT_PRICE_PER_MILLION
+    output_price = config.OPENAI_OUTPUT_PRICE_PER_MILLION
+    cached_input_price = config.OPENAI_CACHED_INPUT_PRICE_PER_MILLION
+
+    if input_price is not None and output_price is not None:
+        pricing[config.OPENAI_MODEL] = ModelPricing(
+            input_per_million=Decimal(input_price),
+            output_per_million=Decimal(output_price),
+            cached_input_per_million=(
+                Decimal(cached_input_price)
+                if cached_input_price is not None
+                else None
+            )
+        )
+
+    return CostCalculator(pricing)
 
 
 def build_assistant() -> AssistantService:
@@ -24,7 +47,9 @@ def build_assistant() -> AssistantService:
 
     return AssistantService(
         llm_client=client,
-        tool_executor=tool_executor
+        tool_executor=tool_executor,
+        model=config.OPENAI_MODEL,
+        cost_calculator=build_cost_calculator()
     )
 
 
