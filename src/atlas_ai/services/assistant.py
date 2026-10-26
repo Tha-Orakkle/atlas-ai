@@ -93,10 +93,12 @@ class AssistantService:
             estimated_cost = self.cost_calculator.estimate(
                 self.model, usage
             )
-        except ValueError as exc:
+        except ValueError:
             logger.error(
-                f"Interaction cost cannot be estimated: {exc!s}"
+                "Interaction cost estimation failed | request_id=%s",
+                request_id
             )
+            return
 
         if estimated_cost is None:
             logger.info(
