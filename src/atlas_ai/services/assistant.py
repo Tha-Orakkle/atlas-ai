@@ -3,6 +3,7 @@ import logging
 from collections.abc import AsyncIterator, Iterator
 from uuid import uuid4
 
+from atlas_ai.cost import CostCalculator
 from atlas_ai.errors import (
     AtlasError,
     LLMBadResponseError,
@@ -47,7 +48,10 @@ class AssistantService:
     def __init__(
         self,
         llm_client: AssistantLLMClient,
-        tool_executor: ToolExecutor
+        tool_executor: ToolExecutor,
+        *,
+        model: str | None = None,
+        cost_calculator: CostCalculator | None = None
     ):
         """
         Initialize the service layer assistant with
@@ -55,6 +59,9 @@ class AssistantService:
         """
         self.client = llm_client
         self.tool_executor = tool_executor
+        self.model = model
+        self.cost_calculator = cost_calculator
+
         developer_message = DeveloperMessage(content=PROMPTS["main"])
         self.conversation = [developer_message]
 
@@ -69,6 +76,66 @@ class AssistantService:
             developer or the assistant.
         """
         self.conversation.append(message)
+
+    def _log_interaction_cost(
+        self,
+        request_id: str,
+        usage: TokenUsage | None
+    ) -> None:
+
+        if self.cost_calculator is None or self.model is None:
+            logger.info(
+                "Interaction cost unavailable | request_id=%s",
+                request_id,
+            )
+            return
+        try:
+            estimated_cost = self.cost_calculator.estimate(
+                self.model, usage
+            )
+        except ValueError as exc:
+            logger.error(
+                f"Interaction cost cannot be estimated: {exc!s}"
+            )
+
+        if estimated_cost is None:
+            logger.info(
+                "Interaction cost unavailable | request_id=%s",
+                request_id,
+            )
+            return
+
+        logger.info(
+            "Interaction cost estimate | request_id=%s model=%s "
+            "estimated_cost_usd=%s",
+            request_id, self.model, estimated_cost
+        )
+
+    def _log_interation_token_usage(
+        self,
+        request_id: str,
+        usage: TokenUsage | None
+    ) -> None:
+        if usage is None:
+            logger.info(
+                "Interaction usage unavailable | request_id=%s",
+                request_id,
+            )
+        else:
+            logger.info(
+                (
+                    "Interation usage | request_id=%s "
+                    "input_tokens=%d output_tokens=%d "
+                    "total_tokens=%d cached_input_tokens=%d "
+                    "reasoning_tokens=%d"
+                ),
+                request_id,
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.total_tokens,
+                usage.cached_input_tokens,
+                usage.reasoning_tokens,
+            )
 
     def generate_response(self, user_input: str) -> str:
         """
@@ -116,25 +183,8 @@ class AssistantService:
 
             total_usage = _aggregate_usage(usages)
 
-            if total_usage is None:
-                logger.info(
-                    "Interaction usage unavailable | request_id=%s",
-                    request_id
-                )
-            else:
-                logger.info(
-                    (
-                        "Interation usage | request_id=%s "
-                        "input_tokens=%d output_tokens=%d total_tokens=%d "
-                        "cached_input_tokens=%d reasoning_tokens=%d"
-                    ),
-                    request_id,
-                    total_usage.input_tokens,
-                    total_usage.output_tokens,
-                    total_usage.total_tokens,
-                    total_usage.cached_input_tokens,
-                    total_usage.reasoning_tokens,
-                )
+            self._log_interation_token_usage(request_id, total_usage)
+            self._log_interaction_cost(request_id, total_usage)
 
             logger.info(
                 "Request completed | request_id=%s",
@@ -195,26 +245,8 @@ class AssistantService:
 
                     total_usage = _aggregate_usage(usages)
 
-                    if total_usage is None:
-                        logger.info(
-                            "Interaction usage unavailable | request_id=%s",
-                            request_id
-                        )
-                    else:
-                        logger.info(
-                            (
-                                "Interation usage | request_id=%s "
-                                "input_tokens=%d output_tokens=%d "
-                                "total_tokens=%d cached_input_tokens=%d "
-                                "reasoning_tokens=%d"
-                            ),
-                            request_id,
-                            total_usage.input_tokens,
-                            total_usage.output_tokens,
-                            total_usage.total_tokens,
-                            total_usage.cached_input_tokens,
-                            total_usage.reasoning_tokens,
-                        )
+                    self._log_interation_token_usage(request_id, total_usage)
+                    self._log_interaction_cost(request_id, total_usage)
 
                     logger.info(
                         "Streaming request completed | request_id=%s",
@@ -293,26 +325,8 @@ class AssistantService:
 
                     total_usage = _aggregate_usage(usages)
 
-                    if total_usage is None:
-                        logger.info(
-                            "Interaction usage unavailable | request_id=%s",
-                            request_id
-                        )
-                    else:
-                        logger.info(
-                            (
-                                "Interation usage | request_id=%s "
-                                "input_tokens=%d output_tokens=%d "
-                                "total_tokens=%d cached_input_tokens=%d "
-                                "reasoning_tokens=%d"
-                            ),
-                            request_id,
-                            total_usage.input_tokens,
-                            total_usage.output_tokens,
-                            total_usage.total_tokens,
-                            total_usage.cached_input_tokens,
-                            total_usage.reasoning_tokens,
-                        )
+                    self._log_interation_token_usage(request_id, total_usage)
+                    self._log_interaction_cost(request_id, total_usage)
 
                     logger.info(
                         "Async streaming request completed | request_id=%s",
