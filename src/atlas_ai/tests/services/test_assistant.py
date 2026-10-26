@@ -1,7 +1,9 @@
 import logging
+from decimal import Decimal
 
 import pytest
 
+from atlas_ai.cost import CostCalculator, ModelPricing
 from atlas_ai.errors import AtlasError
 from atlas_ai.models import (
     AssistantMessage,
@@ -194,3 +196,74 @@ def test_generate_response_logs_aggregate_usage_across_tool_calls(
     assert "input_tokens=250" in caplog.text
     assert "output_tokens=50" in caplog.text
     assert "total_tokens=300" in caplog.text
+
+
+def test_generate_response_logs_estimated_interaction_cost(
+    caplog,
+    tool_executor,
+):
+    calculator = CostCalculator(
+        {
+            "example-model": ModelPricing(
+                input_per_million=Decimal("2.00"),
+                output_per_million=Decimal("8.00"),
+                cached_input_per_million=Decimal("0.50"),
+            )
+        }
+    )
+
+    client = FakeLLMClient(
+        responses=[
+            LLMResponse(
+                message=AssistantMessage(text="Hello"),
+                usage=TokenUsage(1000, 300, 1300),
+            )
+        ]
+    )
+
+    assistant = AssistantService(
+        client,
+        tool_executor,
+        model="example-model",
+        cost_calculator=calculator,
+    )
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.services.assistant",
+    ):
+        assistant.generate_response("Hello")
+
+    assert "Interaction cost estimate" in caplog.text
+    assert "model=example-model" in caplog.text
+    assert "estimated_cost_usd=0.0044" in caplog.text
+
+
+def test_cost_is_unavailable_without_pricing_configuration(
+    caplog,
+    tool_executor,
+):
+    client = FakeLLMClient(
+        responses=[
+            LLMResponse(
+                message=AssistantMessage(text="Hello"),
+                usage=TokenUsage(1000, 300, 1300),
+            )
+        ]
+    )
+
+    assistant = AssistantService(
+        client,
+        tool_executor,
+        model="example-model",
+        cost_calculator=CostCalculator({}),
+    )
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.services.assistant",
+    ):
+        assistant.generate_response("Hello")
+
+    assert "Interaction cost unavailable" in caplog.text
+    assert "estimated_cost_usd=" not in caplog.text
