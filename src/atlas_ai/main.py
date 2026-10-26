@@ -20,7 +20,7 @@ def build_cost_calculator() -> CostCalculator:
     cached_input_price = config.OPENAI_CACHED_INPUT_PRICE_PER_MILLION
 
     if input_price is not None and output_price is not None:
-        pricing[config.OPENAI_MODEL] = ModelPricing(
+        pricing[f"openai:{config.OPENAI_MODEL}"] = ModelPricing(
             input_per_million=Decimal(input_price),
             output_per_million=Decimal(output_price),
             cached_input_per_million=(
