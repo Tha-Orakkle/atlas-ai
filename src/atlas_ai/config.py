@@ -4,8 +4,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# OPENAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-6-luna")
+OPENAI_INPUT_PRICE_PER_MILLION = os.getenv(
+    "OPENAI_INPUT_PRICE_PER_MILLION"
+)
+OPENAI_OUTPUT_PRICE_PER_MILLION = os.getenv(
+    "OPENAI_OUTPUT_PRICE_PER_MILLION"
+)
+OPENAI_CACHED_INPUT_PRICE_PER_MILLION = os.getenv(
+    "OPENAI_CACHED_INPUT_PRICE_PER_MILLION"
+)
 
 # Reliability Configurations
 RETRY_MAX_DELAY = 30.0
