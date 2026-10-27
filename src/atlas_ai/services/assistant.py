@@ -50,6 +50,7 @@ class AssistantService:
         llm_client: AssistantLLMClient,
         tool_executor: ToolExecutor,
         *,
+        provider: str | None = None,
         model: str | None = None,
         cost_calculator: CostCalculator | None = None
     ):
@@ -57,9 +58,10 @@ class AssistantService:
         Initialize the service layer assistant with
         the LLM client and the tool executor.
         """
-        self.provider = "openai"
         self.client = llm_client
         self.tool_executor = tool_executor
+
+        self.provider = provider
         self.model = f"{self.provider}:{model}"
         self.cost_calculator = cost_calculator
 
@@ -114,7 +116,7 @@ class AssistantService:
             request_id, self.model, estimated_cost
         )
 
-    def _log_interation_token_usage(
+    def _log_interaction_token_usage(
         self,
         request_id: str,
         usage: TokenUsage | None
@@ -127,7 +129,7 @@ class AssistantService:
         else:
             logger.info(
                 (
-                    "Interation usage | request_id=%s "
+                    "Interaction usage | request_id=%s "
                     "input_tokens=%d output_tokens=%d "
                     "total_tokens=%d cached_input_tokens=%d "
                     "reasoning_tokens=%d"
@@ -186,7 +188,7 @@ class AssistantService:
 
             total_usage = _aggregate_usage(usages)
 
-            self._log_interation_token_usage(request_id, total_usage)
+            self._log_interaction_token_usage(request_id, total_usage)
             self._log_interaction_cost(request_id, total_usage)
 
             logger.info(
@@ -248,7 +250,7 @@ class AssistantService:
 
                     total_usage = _aggregate_usage(usages)
 
-                    self._log_interation_token_usage(request_id, total_usage)
+                    self._log_interaction_token_usage(request_id, total_usage)
                     self._log_interaction_cost(request_id, total_usage)
 
                     logger.info(
@@ -328,7 +330,7 @@ class AssistantService:
 
                     total_usage = _aggregate_usage(usages)
 
-                    self._log_interation_token_usage(request_id, total_usage)
+                    self._log_interaction_token_usage(request_id, total_usage)
                     self._log_interaction_cost(request_id, total_usage)
 
                     logger.info(
