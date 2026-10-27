@@ -48,6 +48,7 @@ def build_assistant() -> AssistantService:
     return AssistantService(
         llm_client=client,
         tool_executor=tool_executor,
+        provider="openai",
         model=config.OPENAI_MODEL,
         cost_calculator=build_cost_calculator()
     )
