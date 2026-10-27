@@ -1,6 +1,9 @@
 import json
 import logging
+import math
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from openai import (
@@ -47,6 +50,33 @@ from atlas_ai.models import (
 from atlas_ai.reliability.retry import retry
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse Retry-After into a non-negative delay in seconds."""
+    if value is None:
+        return None
+
+    try:
+        delay = float(value)
+
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+
+            delay = (
+                retry_at - datetime.now(UTC)
+            ).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    if not math.isfinite(delay) or delay < 0:
+        return None
+
+    return delay
 
 
 class OpenAIClient(AssistantLLMClient):
@@ -249,7 +279,9 @@ class OpenAIClient(AssistantLLMClient):
             return self._from_openai_response(response)
 
         except RateLimitError as exc:
-            retry_after = exc.response.headers.get("Retry-After")
+            retry_after = _parse_retry_after(
+                exc.response.headers.get("Retry-After")
+            )
             raise LLMRateLimitError(
                 "The LLM provider rate limit was exceeded.",
                 retry_after=retry_after
@@ -370,7 +402,9 @@ class OpenAIClient(AssistantLLMClient):
                 )
 
         except RateLimitError as exc:
-            retry_after = exc.response.headers.get("Retry-After")
+            retry_after = _parse_retry_after(
+                exc.response.headers.get("Retry-After")
+            )
             yield StreamError(
                 error=LLMRateLimitError(
                     "The LLM provider rate limit was exceeded.",
@@ -498,7 +532,9 @@ class OpenAIClient(AssistantLLMClient):
                 )
 
         except RateLimitError as exc:
-            retry_after = exc.response.headers.get("Retry-After")
+            retry_after = _parse_retry_after(
+                exc.response.headers.get("Retry-After")
+            )
             yield StreamError(
                 error=LLMRateLimitError(
                     "The LLM provider rate limit was exceeded.",
