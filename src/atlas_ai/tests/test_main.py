@@ -1,3 +1,4 @@
+from decimal import Decimal
 from unittest.mock import Mock
 
 import atlas_ai.main as main_module
@@ -7,7 +8,7 @@ from atlas_ai.llm.streaming import (
     StreamError,
     TextDelta,
 )
-from atlas_ai.models import AssistantMessage
+from atlas_ai.models import AssistantMessage, TokenUsage
 
 # def configure_main(monkeypatch, events):
 #     assistant = Mock()
@@ -160,3 +161,57 @@ def test_main_exits_without_starting_a_stream(
 
     assert "Goodbye." in capsys.readouterr().out
     assistant.astream_response.assert_not_called()
+
+
+def test_build_cost_calculator_registers_provider_prefixed_model(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        main_module.config, "OPENAI_MODEL", "test-model"
+    )
+    monkeypatch.setattr(
+        main_module.config, "OPENAI_INPUT_PRICE_PER_MILLION", "2.00"
+    )
+    monkeypatch.setattr(
+        main_module.config, "OPENAI_OUTPUT_PRICE_PER_MILLION", "8.00"
+    )
+    monkeypatch.setattr(
+        main_module.config,
+        "OPENAI_CACHED_INPUT_PRICE_PER_MILLION",
+        "0.50",
+    )
+
+    calculator = main_module.build_cost_calculator()
+
+    usage = TokenUsage(1000, 300, 1300)
+
+    assert calculator.estimate("openai:test-model", usage) == (
+        Decimal("0.0044")
+    )
+    assert calculator.estimate("test-model", usage) is None
+
+
+def test_build_cost_calculator_without_prices_returns_unknown_cost(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        main_module.config, "OPENAI_MODEL", "test-model"
+    )
+    monkeypatch.setattr(
+        main_module.config, "OPENAI_INPUT_PRICE_PER_MILLION", None
+    )
+    monkeypatch.setattr(
+        main_module.config, "OPENAI_OUTPUT_PRICE_PER_MILLION", None
+    )
+    monkeypatch.setattr(
+        main_module.config,
+        "OPENAI_CACHED_INPUT_PRICE_PER_MILLION",
+        None,
+    )
+
+    calculator = main_module.build_cost_calculator()
+
+    assert calculator.estimate(
+        "openai:test-model",
+        TokenUsage(1000, 300, 1300),
+    ) is None
