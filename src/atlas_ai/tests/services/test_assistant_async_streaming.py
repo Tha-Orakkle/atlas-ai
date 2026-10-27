@@ -1,7 +1,9 @@
 import asyncio
 import logging
+from decimal import Decimal
 from unittest.mock import Mock
 
+from atlas_ai.cost import CostCalculator, ModelPricing
 from atlas_ai.llm.streaming import (
     ResponseCompleted,
     StreamError,
@@ -156,3 +158,82 @@ def test_astream_response_logs_aggregate_usage_across_tool_calls(
     assert "input_tokens=250" in caplog.text
     assert "output_tokens=50" in caplog.text
     assert "total_tokens=300" in caplog.text
+
+
+def test_astream_response_logs_aggregate_usage_and_cost(
+    caplog, tool_executor
+):
+    calculator = CostCalculator(
+        {
+            "test-provider:example-model": ModelPricing(
+                input_per_million=Decimal("2.00"),
+                output_per_million=Decimal("8.00"),
+                cached_input_per_million=Decimal("0.50"),
+            )
+        }
+    )
+
+    tool_call = ToolCall(
+        call_id="call_123",
+        name="calculate",
+        arguments={"expression": "2 + 2"},
+    )
+
+    tool_executor.execute.return_value = ToolResultMessage(
+        results=[
+            ToolResult(
+                call_id="call_123",
+                result={"result": 4},
+            )
+        ]
+    )
+
+    client = FakeAsyncLLMClient([
+        [
+            ResponseCompleted(
+                message=AssistantMessage(tool_calls=[tool_call]),
+                usage=TokenUsage(
+                    1000, 100, 1100,
+                    cached_input_tokens=100,
+                ),
+            ),
+        ],
+        [
+            ResponseCompleted(
+                message=AssistantMessage(text="4"),
+                usage=TokenUsage(2000, 300, 2300),
+            ),
+        ],
+    ])
+
+    assistant = AssistantService(
+        client,
+        tool_executor,
+        provider="test-provider",
+        model="example-model",
+        cost_calculator=calculator,
+    )
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.services.assistant",
+    ):
+        events = collect(
+            assistant.astream_response("What is 2 + 2?")
+        )
+
+    completion = next(
+        event for event in events
+        if isinstance(event, ResponseCompleted)
+    )
+
+    assert completion.usage == TokenUsage(
+        input_tokens=3000,
+        output_tokens=400,
+        total_tokens=3400,
+        cached_input_tokens=100,
+        reasoning_tokens=0,
+    )
+    assert "Interaction usage" in caplog.text
+    assert "cached_input_tokens=100" in caplog.text
+    assert "estimated_cost_usd=0.00905" in caplog.text
