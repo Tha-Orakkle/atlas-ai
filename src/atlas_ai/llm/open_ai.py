@@ -8,6 +8,7 @@ from typing import Any
 
 from openai import (
     APIConnectionError,
+    APIError,
     APIStatusError,
     APITimeoutError,
     AsyncOpenAI,
@@ -19,6 +20,7 @@ from openai import (
 from openai.types.responses.response import Response, ResponseUsage
 
 from atlas_ai.errors import (
+    LLMAPIError,
     LLMAuthenticationError,
     LLMBadRequestError,
     LLMBadResponseError,
@@ -47,6 +49,7 @@ from atlas_ai.models import (
     ToolResultMessage,
     UserMessage,
 )
+from atlas_ai.observability import RequestContext
 from atlas_ai.reliability.retry import retry
 
 logger = logging.getLogger(__name__)
@@ -94,6 +97,7 @@ class OpenAIClient(AssistantLLMClient):
         """
         Initializes an openai client
         """
+        self.provider = "openai"
         self.client = OpenAI(api_key=api_key, max_retries=0)
         self.async_client = AsyncOpenAI(
             api_key=api_key,
@@ -258,7 +262,9 @@ class OpenAIClient(AssistantLLMClient):
 
     def generate_response(
         self,
-        context: list[ConversationMessage]
+        context: list[ConversationMessage],
+        *,
+        request_context: RequestContext | None = None
     ) -> LLMResponse:
         """
         Communicates with the OpenAI responses API.
@@ -268,12 +274,29 @@ class OpenAIClient(AssistantLLMClient):
         try:
             openai_input = self._to_openai_input(context)
 
-            logger.info("Calling OpenAI model")
+            logger.info(
+                "LLM request started | provider=%s "
+                "interaction_id=%s request_id=%s",
+                self.provider,
+                request_context.interaction_id if request_context else None,
+                request_context.request_id if request_context else None,
+            )
 
             response = self.client.responses.create(
                 model=self.model,
                 input=openai_input,
                 tools=self.tools_schema
+            )
+
+            provider_request_id = getattr(response, "_request_id", None)
+
+            logger.info(
+                "LLM request completed | provider=%s "
+                "interaction_id=%s request_id=%s provider_request_id=%s",
+                self.provider,
+                request_context.interaction_id if request_context else None,
+                request_context.request_id if request_context else None,
+                provider_request_id,
             )
 
             return self._from_openai_response(response)
@@ -314,7 +337,9 @@ class OpenAIClient(AssistantLLMClient):
 
     def generate(
         self,
-        context: list[ConversationMessage]
+        context: list[ConversationMessage],
+        *,
+        request_context: RequestContext | None = None
     ) -> LLMResponse:
         """
         Communicate with OpenAI model.
@@ -323,12 +348,18 @@ class OpenAIClient(AssistantLLMClient):
             tool call requests and results.
         """
         return retry(
-            lambda: self.generate_response(context)
+            lambda: self.generate_response(
+                context,
+                request_context=request_context
+            ),
+            request_context=request_context
         )
 
     def stream(
         self,
-        context: list[ConversationMessage]
+        context: list[ConversationMessage],
+        *,
+        request_context: RequestContext | None = None
     ) -> Iterator[StreamEvent]:
 
         tool_calls: list[ToolCall] = []
@@ -337,7 +368,13 @@ class OpenAIClient(AssistantLLMClient):
         try:
             openai_input = self._to_openai_input(context)
 
-            logger.info("Starting OpenAI streaming request")
+            logger.info(
+                "LLM request started (streaming) | provider=%s "
+                "interaction_id=%s request_id=%s",
+                self.provider,
+                request_context.interaction_id if request_context else None,
+                request_context.request_id if request_context else None,
+            )
 
             with self.client.responses.stream(
                 model=self.model,
@@ -396,6 +433,22 @@ class OpenAIClient(AssistantLLMClient):
                         )
                         return
 
+                # provider_request_id = getattr(response, "_request_id", None)
+                provider_request_id = stream._response.headers.get(
+                    "x-request-id"
+                )
+
+                logger.info(
+                    "LLM request completed (streaming) | provider=%s "
+                    "interaction_id=%s request_id=%s provider_request_id=%s",
+                    self.provider,
+                    request_context.interaction_id
+                    if request_context else None,
+                    request_context.request_id
+                    if request_context else None,
+                    provider_request_id,
+                )
+
                 yield ResponseCompleted(
                     message=final_message,
                     usage=usage
@@ -447,6 +500,13 @@ class OpenAIClient(AssistantLLMClient):
                 )
             )
 
+        except APIError as exc:
+            yield StreamError(
+                error=LLMAPIError(
+                    f"LLM provider API returned an error: {exc}"
+                )
+            )
+
         except (json.JSONDecodeError, ValueError) as exc:
             yield StreamError(
                 error=LLMBadResponseError(
@@ -456,7 +516,9 @@ class OpenAIClient(AssistantLLMClient):
 
     async def astream(
         self,
-        context: list[ConversationMessage]
+        context: list[ConversationMessage],
+        *,
+        request_context: RequestContext | None = None
     ) -> AsyncIterator[StreamEvent]:
 
         tool_calls: list[ToolCall] = []
@@ -465,7 +527,13 @@ class OpenAIClient(AssistantLLMClient):
         try:
             openai_input = self._to_openai_input(context)
 
-            logger.info("Starting async OpenAI streaming request")
+            logger.info(
+                "LLM request started (async-streaming) | provider=%s "
+                "interaction_id=%s request_id=%s",
+                self.provider,
+                request_context.interaction_id if request_context else None,
+                request_context.request_id if request_context else None,
+            )
 
             async with self.async_client.responses.stream(
                 model=self.model,
@@ -526,6 +594,24 @@ class OpenAIClient(AssistantLLMClient):
                             )
                         )
                         return
+
+                # provider_request_id = getattr(response, "_request_id", None)
+                provider_request_id = stream._response.headers.get(
+                    "x-request-id"
+                )
+
+                logger.info(
+                    "LLM request completed (async-streaming) | "
+                    "provider=%s interaction_id=%s request_id=%s "
+                    "provider_request_id=%s",
+                    self.provider,
+                    request_context.interaction_id
+                    if request_context else None,
+                    request_context.request_id
+                    if request_context else None,
+                    provider_request_id,
+                )
+
                 yield ResponseCompleted(
                     message=final_message,
                     usage=usage
@@ -574,6 +660,13 @@ class OpenAIClient(AssistantLLMClient):
             yield StreamError(
                 error=LLMBadRequestError(
                     f"LLM provider returned an error: {exc}",
+                )
+            )
+
+        except APIError as exc:
+            yield StreamError(
+                error=LLMAPIError(
+                    f"LLM provider API returned an error: {exc}"
                 )
             )
 
