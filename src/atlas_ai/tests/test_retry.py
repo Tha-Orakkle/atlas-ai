@@ -3,6 +3,7 @@ import logging
 import pytest
 
 from atlas_ai.errors import AtlasError, LLMRateLimitError, LLMTimeoutError
+from atlas_ai.observability import RequestContext
 from atlas_ai.reliability.retry import RetryPolicy, retry
 
 
@@ -239,6 +240,10 @@ def test_backoff_is_capped_by_max_delay(monkeypatch):
 def test_retry_attempts_remain_logged(monkeypatch, caplog):
     """Test that each failed retry attempt is logged."""
     calls = 0
+    request_context = RequestContext(
+        interaction_id="interaction_id",
+        request_id="request_id"
+    )
 
     def operation():
         nonlocal calls
@@ -253,8 +258,19 @@ def test_retry_attempts_remain_logged(monkeypatch, caplog):
     )
 
     with caplog.at_level(logging.INFO, logger="atlas_ai.reliability.retry"):
-        result = retry(operation, policy=RetryPolicy(max_attempts=3))
+        result = retry(
+            operation,
+            policy=RetryPolicy(max_attempts=3),
+            request_context=request_context
+        )
 
     assert result == "success"
-    assert "Attempt 1/3 failed: rate limited" in caplog.text
-    assert "Attempt 2/3 failed: rate limited" in caplog.text
+
+    def _log(n):
+        return (
+            f"LLM request attempt failed | interaction_id=interaction_id "
+            f"request_id=request_id attempt={n} max_attempts=3 "
+            "error=rate limited"
+        )
+    assert _log(1) in caplog.text
+    assert _log(2) in caplog.text

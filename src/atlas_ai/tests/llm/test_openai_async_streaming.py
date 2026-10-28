@@ -22,6 +22,7 @@ from atlas_ai.models import (
     ToolCall,
     UserMessage,
 )
+from atlas_ai.observability import RequestContext
 
 
 def make_response(
@@ -330,9 +331,29 @@ def test_astream_logs_calling_llm(caplog, openai_client):
         response=make_response()
     )
 
+    request_context = RequestContext(
+        interaction_id="interaction_id",
+        request_id="request_id"
+    )
+
     with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
         collect(
-            openai_client.astream([UserMessage(content="Hello")])
+            openai_client.astream(
+                [UserMessage(content="Hello")],
+                request_context=request_context
+            )
         )
 
-    assert "Starting async OpenAI streaming request" in caplog.text
+    assert (
+        f"LLM request started (async-streaming) | "
+        f"provider={openai_client.provider} "
+        f"interaction_id={request_context.interaction_id} "
+        f"request_id={request_context.request_id}"
+    ) in caplog.text
+
+    assert (
+        f"LLM request completed (async-streaming) | "
+        f"provider={openai_client.provider} "
+        f"interaction_id={request_context.interaction_id} "
+        f"request_id={request_context.request_id} provider_request_id="
+    ) in caplog.text

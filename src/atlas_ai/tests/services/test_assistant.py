@@ -18,13 +18,19 @@ from atlas_ai.tools.executor import ToolExecutor
 from atlas_ai.tools.registry import TOOLS
 
 
+def _log(task):
+    return (
+        f"{task} | interaction_id="
+    )
+
+
 class FakeLLMClient:
     def __init__(self, responses=None, error=None):
         self.responses = iter(responses or [])
         self.error = error
         self.contexts = []
 
-    def generate(self, context):
+    def generate(self, context, *, request_context):
         self.contexts.append(context.copy())
 
         if self.error is not None:
@@ -52,9 +58,9 @@ def test_generate_response_logs_request_start_and_completion(
         result = assistant.generate_response("Hello")
 
     assert result == "Hello"
-    assert "Request started | request_id=" in caplog.text
-    assert "Preparing request to LLM | request_id=" in caplog.text
-    assert "Request completed | request_id=" in caplog.text
+    assert _log("Interaction started") in caplog.text
+    assert _log("Preparing LLM request") in caplog.text
+    assert _log("Interaction completed") in caplog.text
 
 
 def test_generate_response_persists_only_completed_assistant_turn(
@@ -157,9 +163,9 @@ def test_generate_response_removes_user_input_when_llm_fails(
         assistant.generate_response("Hello")
 
     assert len(assistant.conversation) == 1
-    assert "Request started | request_id=" in caplog.text
-    assert "Preparing request to LLM | request_id=" in caplog.text
-    assert "Request failed | request_id=" in caplog.text
+    assert _log("Interaction started") in caplog.text
+    assert _log("Preparing LLM request") in caplog.text
+    assert _log("Interaction failed") in caplog.text
 
 
 def test_generate_response_logs_aggregate_usage_across_tool_calls(
@@ -433,4 +439,4 @@ def test_cost_estimation_failure_does_not_fail_interaction(
 
     assert result == "Hello"
     assert "Interaction cost estimation failed" in caplog.text
-    assert "Request completed" in caplog.text
+    assert _log("Interaction completed") in caplog.text

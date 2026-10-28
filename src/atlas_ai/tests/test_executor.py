@@ -4,7 +4,15 @@ from unittest.mock import Mock
 import pytest
 
 from atlas_ai.models import ToolCall, ToolResult, ToolResultMessage
+from atlas_ai.observability import RequestContext
 from atlas_ai.tools.executor import ToolExecutor
+
+
+def _log(task, tool):
+    return (
+        f"{task} | tool={tool} interaction_id=interaction_id "
+        "request_id=request_id"
+    )
 
 
 @pytest.fixture
@@ -127,10 +135,16 @@ def test_unknown_tool_is_logged(executor, caplog):
         logging.INFO,
         logger="atlas_ai.tools.executor",
     ):
-        executor.execute([make_tool_call(name="unknown_tool")])
+        executor.execute(
+            [make_tool_call(name="unknown_tool")],
+            request_context=RequestContext(
+                interaction_id="interaction_id",
+                request_id="request_id"
+            ))
 
-    assert "Executing tool | tool=unknown_tool" in caplog.text
-    assert "Tool not found | tool=unknown_tool" in caplog.text
+    tool_name = "unknown_tool"
+    assert _log("Executing tool", tool_name) in caplog.text
+    assert _log("Tool not found", tool_name) in caplog.text
 
 
 def test_tool_execution_failure_returns_application_level_error(
@@ -168,11 +182,18 @@ def test_tool_execution_failure_is_logged(
         logging.INFO,
         logger="atlas_ai.tools.executor",
     ):
-        executor.execute([make_tool_call()])
+        executor.execute(
+            [make_tool_call()],
+            request_context=RequestContext(
+                interaction_id="interaction_id",
+                request_id="request_id"
+            )
+        )
 
-    assert "Executing tool | tool=calculate" in caplog.text
-    assert "Tool failed | tool=calculate" in caplog.text
-    assert "Tool completed | tool=calculate" not in caplog.text
+    tool_name = "calculate"
+    assert _log("Executing tool", tool_name) in caplog.text
+    assert _log("Tool execution failed", tool_name) in caplog.text
+    assert _log("Tool execution completed", tool_name) not in caplog.text
 
 
 def test_raw_tool_arguments_are_not_logged(executor, caplog):
@@ -185,9 +206,17 @@ def test_raw_tool_arguments_are_not_logged(executor, caplog):
         logging.INFO,
         logger="atlas_ai.tools.executor",
     ):
-        executor.execute([tool_call])
+        executor.execute(
+            [tool_call],
+            request_context=RequestContext(
+                interaction_id="interaction_id",
+                request_id="request_id"
+            )
+        )
 
-    assert "Executing tool | tool=calculate" in caplog.text
-    assert "Tool completed | tool=calculate" in caplog.text
+    tool_name = "calculate"
+
+    assert _log("Executing tool", tool_name) in caplog.text
+    assert _log("Tool execution completed", tool_name) in caplog.text
     assert secret not in caplog.text
     assert "api_key" not in caplog.text

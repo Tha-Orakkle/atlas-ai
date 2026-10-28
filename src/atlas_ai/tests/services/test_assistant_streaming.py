@@ -27,6 +27,12 @@ from atlas_ai.models import (
 from atlas_ai.services.assistant import AssistantService
 
 
+def _log(task):
+    return (
+        f"{task} (streaming) | interaction_id="
+    )
+
+
 class FakeStreamingLLMClient:
 
     def __init__(
@@ -36,7 +42,12 @@ class FakeStreamingLLMClient:
         self.events = iter(events or [])
         self.contexts = []
 
-    def stream(self, context) -> Iterator[StreamEvent]:
+    def stream(
+        self,
+        context,
+        *,
+        request_context
+    ) -> Iterator[StreamEvent]:
         self.contexts.append(context.copy())
         yield from next(self.events)
 
@@ -191,7 +202,7 @@ def test_stream_response_removes_user_input_when_stream_raises_atlas_error(
     tool_executor
 ):
     class FailingStreamingClient:
-        def stream(self, context):
+        def stream(self, context, *, request_context):
             raise AtlasError("Provider unavailable")
             yield
 
@@ -288,8 +299,8 @@ def test_stream_response_logs_request_start_and_completion(
     ):
         list(assistant.stream_response("Hello"))
 
-    assert "Streaming request started | request_id=" in caplog.text
-    assert "Streaming request completed | request_id=" in caplog.text
+    assert _log("Interaction started") in caplog.text
+    assert _log("Interaction completed") in caplog.text
 
 
 def test_stream_response_logs_failed_request(
@@ -304,8 +315,8 @@ def test_stream_response_logs_failed_request(
     ):
         list(assistant.stream_response("Hello."))
 
-    assert "Streaming request started | request_id=" in caplog.text
-    assert "Streaming request failed | request_id=" in caplog.text
+    assert _log("Interaction started") in caplog.text
+    assert _log("Interaction failed") in caplog.text
 
 
 def test_stream_response_logs_aggregate_usage_across_tool_calls(

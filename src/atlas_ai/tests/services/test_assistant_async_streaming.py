@@ -16,8 +16,15 @@ from atlas_ai.models import (
     ToolResult,
     ToolResultMessage,
 )
+from atlas_ai.observability import RequestContext
 from atlas_ai.services.assistant import AssistantService
 from atlas_ai.tools.executor import ToolExecutor
+
+
+def _log(task):
+    return (
+        f"{task} (async-streaming) | interaction_id="
+    )
 
 
 class FakeAsyncLLMClient:
@@ -25,7 +32,7 @@ class FakeAsyncLLMClient:
         self.events = iter(events)
         self.contexts = []
 
-    async def astream(self, context):
+    async def astream(self, context, *, request_context):
         self.contexts.append(context.copy())
 
         for event in next(self.events):
@@ -97,8 +104,11 @@ def test_astream_response_executes_tool_and_continues():
     events = collect(
         assistant.astream_response("What is 2 + 2?")
     )
+    args, kwargs = executor.execute.call_args
 
-    executor.execute.assert_called_once_with([tool_call])
+    assert args[0] == [tool_call]
+    assert isinstance(kwargs["request_context"], RequestContext)
+
     assert events == [
         TextDelta(text="The answer is 4."),
         ResponseCompleted(message=final_message),
