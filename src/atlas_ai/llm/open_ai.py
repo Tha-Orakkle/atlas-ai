@@ -55,6 +55,16 @@ from atlas_ai.reliability.retry import retry
 logger = logging.getLogger(__name__)
 
 
+def _get_stream_provider_request_id(stream) -> str | None:
+    response = getattr(stream, "_response", None)
+    headers = getattr(response, "headers", None)
+
+    if headers is None:
+        return None
+
+    return headers.get("x-request-id")
+
+
 def _parse_retry_after(value: str | None) -> float | None:
     """Parse Retry-After into a non-negative delay in seconds."""
     if value is None:
@@ -433,10 +443,7 @@ class OpenAIClient(AssistantLLMClient):
                         )
                         return
 
-                # provider_request_id = getattr(response, "_request_id", None)
-                provider_request_id = stream._response.headers.get(
-                    "x-request-id"
-                )
+                provider_request_id = _get_stream_provider_request_id(stream)
 
                 logger.info(
                     "LLM request completed (streaming) | provider=%s "
@@ -595,10 +602,7 @@ class OpenAIClient(AssistantLLMClient):
                         )
                         return
 
-                # provider_request_id = getattr(response, "_request_id", None)
-                provider_request_id = stream._response.headers.get(
-                    "x-request-id"
-                )
+                provider_request_id = _get_stream_provider_request_id(stream)
 
                 logger.info(
                     "LLM request completed (async-streaming) | "
