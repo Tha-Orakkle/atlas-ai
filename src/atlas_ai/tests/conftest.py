@@ -9,6 +9,7 @@ from atlas_ai.tools.executor import ToolExecutor
 @pytest.fixture
 def openai_client():
     client = object.__new__(OpenAIClient)
+    client.provider = "openai"
     client.model = "gpt-test"
     client.tools_schema = [{"type": "function", "name": "calculate"}]
     client.client = MagicMock()
