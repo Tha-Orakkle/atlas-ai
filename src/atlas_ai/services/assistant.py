@@ -21,6 +21,7 @@ from atlas_ai.models import (
     TokenUsage,
     UserMessage,
 )
+from atlas_ai.observability import RequestContext
 from atlas_ai.prompts import PROMPTS
 from atlas_ai.tools.executor import ToolExecutor
 
@@ -82,14 +83,14 @@ class AssistantService:
 
     def _log_interaction_cost(
         self,
-        request_id: str,
+        request_context: RequestContext,
         usage: TokenUsage | None
     ) -> None:
 
         if self.cost_calculator is None or self.model is None:
             logger.info(
-                "Interaction cost unavailable | request_id=%s",
-                request_id,
+                "Interaction cost unavailable | interaction_id=%s | model=%s",
+                request_context.interaction_id, self.model
             )
             return
         try:
@@ -98,43 +99,45 @@ class AssistantService:
             )
         except ValueError as exc:
             logger.error(
-                "Interaction cost estimation failed | request_id=%s | %s",
-                request_id, str(exc)
+                "Interaction cost estimation failed | interaction_id=%s | "
+                "model=%s | %s",
+                request_context.interaction_id, self.model,
+                str(exc)
             )
             return
 
         if estimated_cost is None:
             logger.info(
-                "Interaction cost unavailable | request_id=%s",
-                request_id,
+                "Interaction cost unavailable | interaction_id=%s | model=%s",
+                request_context.interaction_id, self.model
             )
             return
 
         logger.info(
-            "Interaction cost estimate | request_id=%s model=%s "
+            "Interaction cost estimate | interaction_id=%s model=%s "
             "estimated_cost_usd=%s",
-            request_id, self.model, estimated_cost
+            request_context.interaction_id, self.model, estimated_cost
         )
 
     def _log_interaction_token_usage(
         self,
-        request_id: str,
+        request_context: RequestContext,
         usage: TokenUsage | None
     ) -> None:
         if usage is None:
             logger.info(
-                "Interaction usage unavailable | request_id=%s",
-                request_id,
+                "Interaction usage unavailable | interaction_id=%s",
+                request_context.interaction_id,
             )
         else:
             logger.info(
                 (
-                    "Interaction usage | request_id=%s "
+                    "Interaction usage | interaction_id=%s "
                     "input_tokens=%d output_tokens=%d "
                     "total_tokens=%d cached_input_tokens=%d "
                     "reasoning_tokens=%d"
                 ),
-                request_id,
+                request_context.interaction_id,
                 usage.input_tokens,
                 usage.output_tokens,
                 usage.total_tokens,
@@ -147,9 +150,9 @@ class AssistantService:
         Get responses from AI model. Execute tools if
         model makes tool calls.
         """
-        request_id = str(uuid4())
+        interaction_id = str(uuid4())
 
-        logger.info("Request started | request_id=%s", request_id)
+        logger.info("Interaction started | interaction_id=%s", interaction_id)
 
         user_message = UserMessage(content=user_input)
 
@@ -161,13 +164,19 @@ class AssistantService:
 
         try:
             while True:
+                request_context = RequestContext(
+                    interaction_id=interaction_id,
+                    request_id=str(uuid4())
+                )
                 logger.info(
-                    "Preparing request to LLM | request_id=%s",
-                    request_id
+                    "Preparing LLM request | interaction_id=%s | "
+                    "request_id=%s",
+                    interaction_id, request_context.request_id
                 )
 
                 response = self.client.generate(
                     context=context,
+                    request_context=request_context
                 )
 
                 usages.append(response.usage)
@@ -179,7 +188,8 @@ class AssistantService:
                     break
 
                 tool_result_message = self.tool_executor.execute(
-                    assistant_message.tool_calls
+                    assistant_message.tool_calls,
+                    request_context=request_context
                 )
 
                 context.append(tool_result_message)
@@ -188,12 +198,12 @@ class AssistantService:
 
             total_usage = _aggregate_usage(usages)
 
-            self._log_interaction_token_usage(request_id, total_usage)
-            self._log_interaction_cost(request_id, total_usage)
+            self._log_interaction_token_usage(request_context, total_usage)
+            self._log_interaction_cost(request_context, total_usage)
 
             logger.info(
-                "Request completed | request_id=%s",
-                request_id
+                "Interaction completed | interaction_id=%s",
+                interaction_id
             )
 
             return assistant_message.text
@@ -204,16 +214,19 @@ class AssistantService:
                 self.conversation.pop()
 
             logger.error(
-                "Request failed | request_id=%s",
-                request_id
+                "Interaction failed | interaction_id=%s",
+                interaction_id
             )
             raise
 
     def stream_response(self, user_input: str) -> Iterator[StreamEvent]:
         """Stream a response, executing tool calls when necessary."""
-        request_id = str(uuid4())
+        interaction_id = str(uuid4())
 
-        logger.info("Streaming request started | request_id=%s", request_id)
+        logger.info(
+            "Interaction started (streaming) | interaction_id=%s",
+            interaction_id
+        )
 
         user_message = UserMessage(content=user_input)
         self.add_to_conversation(user_message)
@@ -223,14 +236,36 @@ class AssistantService:
 
         try:
             while True:
+                request_context = RequestContext(
+                    interaction_id=interaction_id,
+                    request_id=str(uuid4())
+                )
+
+                logger.info(
+                    "Preparing LLM request (streaming) | interaction_id=%s | "
+                    "request_id=%s",
+                    interaction_id, request_context.request_id
+                )
+
                 final_message = None
 
-                for event in self.client.stream(context):
+                for event in self.client.stream(
+                    context, request_context=request_context
+                ):
                     if isinstance(event, TextDelta):
                         yield event
 
                     elif isinstance(event, StreamError):
-                        self.conversation.pop()
+                        if (
+                            self.conversation
+                            and self.conversation[-1] == user_message
+                        ):
+                            self.conversation.pop()
+
+                        logger.error(
+                            "Interaction failed | interaction_id=%s",
+                            interaction_id
+                        )
                         yield event
                         return
 
@@ -250,12 +285,17 @@ class AssistantService:
 
                     total_usage = _aggregate_usage(usages)
 
-                    self._log_interaction_token_usage(request_id, total_usage)
-                    self._log_interaction_cost(request_id, total_usage)
+                    self._log_interaction_token_usage(
+                        request_context, total_usage
+                    )
+                    self._log_interaction_cost(
+                        request_context, total_usage
+                    )
 
                     logger.info(
-                        "Streaming request completed | request_id=%s",
-                        request_id
+                        "Interaction completed (streaming) | "
+                        "interaction_id=%s",
+                        interaction_id
                     )
 
                     yield ResponseCompleted(
@@ -265,7 +305,8 @@ class AssistantService:
                     return
 
                 tool_result_message = self.tool_executor.execute(
-                    final_message.tool_calls
+                    final_message.tool_calls,
+                    request_context=request_context
                 )
                 context.append(tool_result_message)
 
@@ -274,8 +315,8 @@ class AssistantService:
                 self.conversation.pop()
 
             logger.error(
-                "Streaming request failed | request_id=%s",
-                request_id
+                "Interaction failed (streaming) | interaction_id=%s",
+                interaction_id
             )
             yield StreamError(error=exc)
 
@@ -284,11 +325,11 @@ class AssistantService:
         user_input: str
     ) -> AsyncIterator[StreamEvent]:
         """Asynchronously stream a response and handle tool calls."""
-        request_id = str(uuid4())
+        interaction_id = str(uuid4())
 
         logger.info(
-            "Async streaming request started | request_id=%s",
-            request_id
+            "Interaction started (async-streaming) | interaction_id=%s",
+            interaction_id
         )
 
         user_message = UserMessage(content=user_input)
@@ -299,9 +340,22 @@ class AssistantService:
 
         try:
             while True:
+                request_context = RequestContext(
+                    interaction_id=interaction_id,
+                    request_id=str(uuid4())
+                )
+
+                logger.info(
+                    "Preparing LLM request (async-streaming) | "
+                    "interaction_id=%s | request_id=%s",
+                    interaction_id, request_context.request_id
+                )
                 final_message = None
 
-                async for event in self.client.astream(context):
+                async for event in self.client.astream(
+                    context,
+                    request_context=request_context
+                ):
                     if isinstance(event, TextDelta):
                         yield event
 
@@ -311,6 +365,11 @@ class AssistantService:
                             and self.conversation[-1] == user_message
                         ):
                             self.conversation.pop()
+
+                        logger.error(
+                            "Interaction failed | interaction_id=%s",
+                            interaction_id
+                        )
                         yield event
                         return
 
@@ -320,7 +379,7 @@ class AssistantService:
 
                 if final_message is None:
                     raise LLMBadResponseError(
-                        "The async stream ended without a completed response."
+                        "The stream ended without a completed response."
                     )
 
                 context.append(final_message)
@@ -330,12 +389,17 @@ class AssistantService:
 
                     total_usage = _aggregate_usage(usages)
 
-                    self._log_interaction_token_usage(request_id, total_usage)
-                    self._log_interaction_cost(request_id, total_usage)
+                    self._log_interaction_token_usage(
+                        request_context, total_usage
+                    )
+                    self._log_interaction_cost(
+                        request_context, total_usage
+                    )
 
                     logger.info(
-                        "Async streaming request completed | request_id=%s",
-                        request_id
+                        "Interaction completed (async-streaming) | "
+                        "interaction_id=%s",
+                        interaction_id
                     )
 
                     yield ResponseCompleted(
@@ -347,7 +411,8 @@ class AssistantService:
                 # Move synchronous ToolExecutor off the event loop.
                 tool_result_message = await asyncio.to_thread(
                     self.tool_executor.execute,
-                    final_message.tool_calls
+                    final_message.tool_calls,
+                    request_context=request_context
                 )
 
                 context.append(tool_result_message)
@@ -357,7 +422,7 @@ class AssistantService:
                 self.conversation.pop()
 
             logger.error(
-                "Async streaming failed | request_id=%s",
-                request_id
+                "Interaction failed (async-streaming) | interaction_id=%s",
+                interaction_id
             )
             yield StreamError(error=exc)
