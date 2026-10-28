@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from atlas_ai.models import ToolCall, ToolResult, ToolResultMessage
+from atlas_ai.observability import RequestContext
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,9 @@ class ToolExecutor:
 
     def execute(
         self,
-        tool_calls: list[ToolCall]
+        tool_calls: list[ToolCall],
+        *,
+        request_context: RequestContext | None = None
     ) -> ToolResultMessage:
 
         """"
@@ -51,16 +54,24 @@ class ToolExecutor:
 
         for tool_call in tool_calls:
             logger.info(
-                "Executing tool | tool=%s",
-                tool_call.name
+                "Executing tool | tool=%s interaction_id=%s "
+                "request_id=%s",
+                tool_call.name,
+                request_context.interaction_id if request_context else None,
+                request_context.request_id if request_context else None,
             )
 
             tool = self.tools_registry.get(tool_call.name)
 
             if not tool:
                 logger.error(
-                    "Tool not found | tool=%s",
-                    tool_call.name
+                    "Tool not found | tool=%s interaction_id=%s "
+                    "request_id=%s",
+                    tool_call.name,
+                    request_context.interaction_id
+                    if request_context else None,
+                    request_context.request_id
+                    if request_context else None,
                 )
                 tool_results.append(
                     self._build_tool_result(
@@ -84,8 +95,13 @@ class ToolExecutor:
             except Exception as exc:  # update to application level errors  # noqa: BLE001
                 # convert to logger.exception
                 logger.error(
-                    "Tool failed | tool=%s | exc=%s",
+                    "Tool execution failed | tool=%s interaction_id=%s "
+                    "request_id=%s error=%s",
                     tool_call.name,
+                    request_context.interaction_id
+                    if request_context else None,
+                    request_context.request_id
+                    if request_context else None,
                     str(exc)
                 )
                 tool_results.append(
@@ -99,8 +115,11 @@ class ToolExecutor:
                 continue
 
             logger.info(
-                "Tool completed | tool=%s",
-                tool_call.name
+                "Tool execution completed | tool=%s "
+                "interaction_id=%s request_id=%s",
+                tool_call.name,
+                request_context.interaction_id if request_context else None,
+                request_context.request_id if request_context else None
             )
 
         return ToolResultMessage(results=tool_results)
