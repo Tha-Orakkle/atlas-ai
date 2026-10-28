@@ -38,12 +38,12 @@ def retry(
         except AtlasError as exc:
             logger.info(
                 "LLM request attempt failed | interaction_id=%s "
-                "request_id=%s attempt=%d max_attempts=%d error=%s",
+                "request_id=%s attempt=%d max_attempts=%d error_type=%s",
                 request_context.interaction_id if request_context else None,
                 request_context.request_id if request_context else None,
                 attempt,
                 policy.max_attempts,
-                exc
+                type(exc).__name__
             )
 
             if not exc.retryable:
