@@ -65,6 +65,10 @@ class LLMIncompleteResponseError(LLMError):
     """Raise when the LLM emits an incomplete response"""
 
 
+class LLMAPIError(LLMError):
+    """Raise when the LLM API emits an error"""
+
+
 # ====================================================
 # TOOL ERRORS
 # ====================================================
