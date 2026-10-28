@@ -96,7 +96,7 @@ def run_atlas_streaming(assistant: AssistantService):
 
         if stream_error is not None:
             print(
-                f"\nAtlas encountered an error: {stream_error}\n"
+                f"Atlas encountered an error: {stream_error}\n"
             )
         else:
             print("\n")
@@ -127,7 +127,7 @@ async def run_atlas_astreaming(assistant: AssistantService):
 
         if stream_error is not None:
             print(
-                f"\nAtlas encountered an error: {stream_error}\n"
+                f"Atlas encountered an error: {stream_error}\n"
             )
         else:
             print("\n")
