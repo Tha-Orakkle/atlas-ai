@@ -41,6 +41,7 @@ class FakeStreamingLLMClient:
     ):
         self.events = iter(events or [])
         self.contexts = []
+        self.request_contexts = []
 
     def stream(
         self,
@@ -49,6 +50,7 @@ class FakeStreamingLLMClient:
         request_context
     ) -> Iterator[StreamEvent]:
         self.contexts.append(context.copy())
+        self.request_contexts.append(request_context)
         yield from next(self.events)
 
 
@@ -433,3 +435,35 @@ def test_stream_response_logs_aggregate_usage_and_cost(
     assert "Interaction usage" in caplog.text
     assert "cached_input_tokens=100" in caplog.text
     assert "estimated_cost_usd=0.00905" in caplog.text
+
+
+def test_tool_loop_preserves_interaction_id_and_changes_request_id(
+    assistant_factory, tool_executor
+):
+    tool_call = ToolCall(
+        call_id="call_123",
+        name="calculate",
+        arguments={"expression": "2 + 2"},
+    )
+    tool_executor.execute.return_value = ToolResultMessage(
+        results=[
+            ToolResult(call_id="call_123", result={"result": 4})
+        ]
+    )
+
+    assistant, client = assistant_factory([
+        [
+            ResponseCompleted(
+                message=AssistantMessage(tool_calls=[tool_call])
+            )
+        ],
+        [
+            ResponseCompleted(message=AssistantMessage(text="4"))
+        ],
+    ])
+
+    list(assistant.stream_response("Calculate 2 + 2."))
+
+    first, second = client.request_contexts
+    assert first.interaction_id == second.interaction_id
+    assert first.request_id != second.request_id

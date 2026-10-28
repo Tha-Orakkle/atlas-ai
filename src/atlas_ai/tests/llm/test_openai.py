@@ -1,4 +1,5 @@
 import json
+import logging
 from types import SimpleNamespace
 
 from atlas_ai.models import (
@@ -10,6 +11,7 @@ from atlas_ai.models import (
     ToolResultMessage,
     UserMessage,
 )
+from atlas_ai.observability import RequestContext
 
 
 def test_translates_application_context_to_openai_input(openai_client):
@@ -259,3 +261,83 @@ def test_usage_details_default_to_zero_when_absent(openai_client):
         cached_input_tokens=0,
         reasoning_tokens=0,
     )
+
+
+def test_generate_logs_provider_request_id(caplog, openai_client):
+    openai_client.client.responses.create.return_value = SimpleNamespace(
+        output=[],
+        output_text="Hello.",
+        usage=None,
+        _request_id="provider-request-123",
+    )
+    context = RequestContext(
+        interaction_id="interaction-123",
+        request_id="request-456",
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
+        result = openai_client.generate_response(
+            [UserMessage(content="Hello.")],
+            request_context=context,
+        )
+
+    assert result.message == AssistantMessage(text="Hello.")
+    assert "interaction_id=interaction-123" in caplog.text
+    assert "request_id=request-456" in caplog.text
+    assert "provider_request_id=provider-request-123" in caplog.text
+
+
+def test_generate_logs_missing_provider_request_id(
+    caplog, openai_client
+):
+    openai_client.client.responses.create.return_value = SimpleNamespace(
+        output=[],
+        output_text="Hello.",
+        usage=None,
+    )
+    context = RequestContext(
+        interaction_id="interaction-123",
+        request_id="request-456",
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
+        result = openai_client.generate_response(
+            [UserMessage(content="Hello.")],
+            request_context=context,
+        )
+
+    assert result.message == AssistantMessage(text="Hello.")
+    assert "provider_request_id=None" in caplog.text
+
+
+def test_generate_does_not_log_prompt_or_raw_tool_arguments(
+    caplog, openai_client
+):
+    prompt_secret = "PRIVATE_PROMPT_SECRET"
+    argument_secret = "RAW_TOOL_ARGUMENT_SECRET"
+
+    openai_client.client.responses.create.return_value = SimpleNamespace(
+        output=[],
+        output_text="Safe response.",
+        usage=None,
+        _request_id="provider-request-123",
+    )
+
+    context = [
+        UserMessage(content=prompt_secret),
+        AssistantMessage(
+            tool_calls=[
+                ToolCall(
+                    call_id="call_123",
+                    name="sensitive_tool",
+                    arguments={"secret": argument_secret},
+                )
+            ]
+        ),
+    ]
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
+        openai_client.generate_response(context)
+
+    assert prompt_secret not in caplog.text
+    assert argument_secret not in caplog.text

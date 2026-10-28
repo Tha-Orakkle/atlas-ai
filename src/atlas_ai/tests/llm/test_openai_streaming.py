@@ -333,3 +333,94 @@ def test_stream_logs_calling_llm(caplog, openai_client):
         f"interaction_id={request_context.interaction_id} "
         f"request_id={request_context.request_id} provider_request_id="
     ) in caplog.text
+
+
+def test_stream_logs_provider_request_id(caplog, openai_client):
+    stream = configure_stream(
+        openai_client,
+        events=[],
+        response=make_response(output_text=""),
+    )
+    stream._response = SimpleNamespace(
+        headers={"x-request-id": "provider-stream-123"}
+    )
+    context = RequestContext(
+        interaction_id="interaction-123",
+        request_id="request-456",
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
+        events = list(
+            openai_client.stream(
+                [UserMessage(content="Hello.")],
+                request_context=context,
+            )
+        )
+
+    assert isinstance(events[-1], ResponseCompleted)
+    assert "provider_request_id=provider-stream-123" in caplog.text
+
+
+def test_stream_logs_missingprovider_request_id(caplog, openai_client):
+    stream = configure_stream(
+        openai_client,
+        events=[],
+        response=make_response(output_text=""),
+    )
+    stream._response = SimpleNamespace()
+
+    context = RequestContext(
+        interaction_id="interaction-123",
+        request_id="request-456",
+    )
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
+        events = list(
+            openai_client.stream(
+                [UserMessage(content="Hello.")],
+                request_context=context,
+            )
+        )
+
+    assert isinstance(events[-1], ResponseCompleted)
+    assert "provider_request_id=None" in caplog.text
+
+
+def test_stream_does_not_log_prompt_or_raw_tool_arguments(
+    caplog, openai_client
+):
+    prompt_secret = "PRIVATE_PROMPT_SECRET"
+    argument_secret = "RAW_TOOL_ARGUMENT_SECRET"
+
+    stream = configure_stream(
+        openai_client,
+        events=[
+            SimpleNamespace(
+                type="response.output_text.delta",
+                delta="Safe response.",
+            )
+        ],
+        response=make_response(output_text="Safe response."),
+    )
+    stream._response = SimpleNamespace(headers={})
+
+    context = [
+        UserMessage(content=prompt_secret),
+        AssistantMessage(
+            tool_calls=[
+                ToolCall(
+                    call_id="call_123",
+                    name="sensitive_tool",
+                    arguments={"secret": argument_secret},
+                )
+            ]
+        ),
+    ]
+
+    with caplog.at_level(logging.INFO, logger="atlas_ai.llm.open_ai"):
+        events = list(openai_client.stream(context))
+
+    assert isinstance(events[-1], ResponseCompleted)
+    assert prompt_secret not in caplog.text
+    assert argument_secret not in caplog.text
+    assert "provider_request_id=None" in caplog.text

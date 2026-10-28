@@ -29,9 +29,11 @@ class FakeLLMClient:
         self.responses = iter(responses or [])
         self.error = error
         self.contexts = []
+        self.request_contexts = []
 
     def generate(self, context, *, request_context):
         self.contexts.append(context.copy())
+        self.request_contexts.append(request_context)
 
         if self.error is not None:
             raise self.error
@@ -440,3 +442,32 @@ def test_cost_estimation_failure_does_not_fail_interaction(
     assert result == "Hello"
     assert "Interaction cost estimation failed" in caplog.text
     assert _log("Interaction completed") in caplog.text
+
+
+def test_tool_loop_reuses_interaction_id_but_creates_new_request_ids(
+    tool_executor,
+):
+    client = FakeLLMClient(
+        responses=[
+            LLMResponse(
+                message=AssistantMessage(
+                    tool_calls=[
+                        ToolCall(
+                            call_id="call_123",
+                            name="calculate",
+                            arguments={"expression": "2 + 2"},
+                        )
+                    ]
+                )
+            ),
+            LLMResponse(message=AssistantMessage(text="4")),
+        ]
+    )
+    assistant = AssistantService(client, tool_executor)
+
+    assert assistant.generate_response("What is 2 + 2?") == "4"
+
+    first, second = client.request_contexts
+
+    assert first.interaction_id == second.interaction_id
+    assert first.request_id != second.request_id

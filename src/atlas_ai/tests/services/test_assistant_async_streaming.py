@@ -31,9 +31,11 @@ class FakeAsyncLLMClient:
     def __init__(self, events):
         self.events = iter(events)
         self.contexts = []
+        self.request_contexts = []
 
     async def astream(self, context, *, request_context):
         self.contexts.append(context.copy())
+        self.request_contexts.append(request_context)
 
         for event in next(self.events):
             yield event
@@ -247,3 +249,36 @@ def test_astream_response_logs_aggregate_usage_and_cost(
     assert "Interaction usage" in caplog.text
     assert "cached_input_tokens=100" in caplog.text
     assert "estimated_cost_usd=0.00905" in caplog.text
+
+
+def test_astream_tool_loop_preserves_interaction_id_and_changes_request_id(
+    tool_executor,
+):
+    tool_call = ToolCall(
+        call_id="call_123",
+        name="calculate",
+        arguments={"expression": "2 + 2"},
+    )
+    tool_executor.execute.return_value = ToolResultMessage(
+        results=[
+            ToolResult(call_id="call_123", result={"result": 4})
+        ]
+    )
+
+    client = FakeAsyncLLMClient([
+        [
+            ResponseCompleted(
+                message=AssistantMessage(tool_calls=[tool_call])
+            )
+        ],
+        [
+            ResponseCompleted(message=AssistantMessage(text="4"))
+        ],
+    ])
+    assistant = AssistantService(client, tool_executor)
+
+    collect(assistant.astream_response("Calculate 2 + 2."))
+
+    first, second = client.request_contexts
+    assert first.interaction_id == second.interaction_id
+    assert first.request_id != second.request_id

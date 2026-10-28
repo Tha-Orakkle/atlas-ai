@@ -270,7 +270,35 @@ def test_retry_attempts_remain_logged(monkeypatch, caplog):
         return (
             f"LLM request attempt failed | interaction_id=interaction_id "
             f"request_id=request_id attempt={n} max_attempts=3 "
-            "error=rate limited"
+            "error_type=LLMRateLimitError"
         )
     assert _log(1) in caplog.text
     assert _log(2) in caplog.text
+
+
+def test_retry_failure_log_does_not_include_exception_message(
+    caplog, monkeypatch
+):
+    secret = "PRIVATE_PROMPT_AND_TOOL_ARGUMENTS"
+    context = RequestContext(
+        interaction_id="interaction-123",
+        request_id="request-456",
+    )
+
+    def operation():
+        raise LLMRateLimitError(secret)
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="atlas_ai.reliability.retry",
+    ), pytest.raises(LLMRateLimitError):
+        retry(
+            operation,
+            policy=RetryPolicy(max_attempts=1),
+            request_context=context,
+        )
+
+    assert secret not in caplog.text
+    assert "interaction_id=interaction-123" in caplog.text
+    assert "request_id=request-456" in caplog.text
+    assert "error_type=LLMRateLimitError" in caplog.text
