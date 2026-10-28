@@ -7,6 +7,7 @@ from typing import Any
 
 from atlas_ai import config
 from atlas_ai.errors import AtlasError
+from atlas_ai.observability import RequestContext
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class RetryPolicy:
 def retry(
     operation: Callable[[], Any],
     *,
-    policy: RetryPolicy | None = None
+    policy: RetryPolicy | None = None,
+    request_context: RequestContext | None = None,
 ) -> Any:
     if policy is None:
         policy = RetryPolicy()
@@ -35,7 +37,10 @@ def retry(
 
         except AtlasError as exc:
             logger.info(
-                "Attempt %d/%d failed: %s",
+                "LLM request attempt failed | interaction_id=%s "
+                "request_id=%s attempt=%d max_attempts=%d error=%s",
+                request_context.interaction_id if request_context else None,
+                request_context.request_id if request_context else None,
                 attempt,
                 policy.max_attempts,
                 exc
@@ -51,9 +56,7 @@ def retry(
 
             # Only retry operations that are safe to retry
             if not policy.safe_to_retry:
-                logger.warning(
-                    "Operation is not safe to retry. Aborting."
-                )
+                logger.warning("Operation is not safe to retry. Aborting.")
                 raise
 
             # Check for explicitly provided delay
