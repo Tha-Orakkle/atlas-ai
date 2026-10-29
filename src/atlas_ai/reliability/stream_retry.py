@@ -8,6 +8,7 @@ from atlas_ai.llm.streaming import (
     StreamError,
     StreamEvent,
     TextDelta,
+    ToolCallCompleted,
 )
 from atlas_ai.observability import RequestContext
 from atlas_ai.reliability.retry import (
@@ -21,14 +22,14 @@ logger = logging.getLogger(__name__)
 def _can_retry(
     error: Exception,
     *,
-    emitted_text: bool,
+    emitted_response: bool,
     attempt: int,
     policy: RetryPolicy,
 ) -> bool:
     return (
         isinstance(error, AtlasError)
         and error.retryable
-        and not emitted_text
+        and not emitted_response
         and policy.safe_to_retry
         and attempt < policy.max_attempts
     )
@@ -74,7 +75,7 @@ def _log_stream_failure(
         policy.max_attempts,
         type(error).__name__,
         getattr(error, "retryable", False),
-        getattr(policy, "safe_to _retry", False)
+        getattr(policy, "safe_to_retry", True)
     )
 
 
@@ -91,7 +92,7 @@ def retry_stream(
         raise ValueError("max_attempts must be at leaset 1")
 
     for attempt in range(1, policy.max_attempts + 1):
-        emitted_text = False
+        emitted_response = False
         retry_error: AtlasError | None = None
 
         stream = None
@@ -112,7 +113,7 @@ def retry_stream(
 
                     if _can_retry(
                         error,
-                        emitted_text=emitted_text,
+                        emitted_response=emitted_response,
                         attempt=attempt,
                         policy=policy,
                     ):
@@ -122,8 +123,8 @@ def retry_stream(
                     yield event
                     return
 
-                if isinstance(event, TextDelta):
-                    emitted_text = True
+                if (isinstance(event, (TextDelta, ToolCallCompleted))):
+                    emitted_response = True
 
                 yield event
 
@@ -137,7 +138,7 @@ def retry_stream(
 
             if _can_retry(
                 error,
-                emitted_text=emitted_text,
+                emitted_response=emitted_response,
                 attempt=attempt,
                 policy=policy,
             ):
@@ -177,7 +178,7 @@ async def retry_astream(
         raise ValueError("max_attempts must be at least 1")
 
     for attempt in range(1, policy.max_attempts + 1):
-        emitted_text = False
+        emitted_response = False
         retry_error: AtlasError | None = None
 
         stream = None
@@ -198,7 +199,7 @@ async def retry_astream(
 
                     if _can_retry(
                         error,
-                        emitted_text=emitted_text,
+                        emitted_response=emitted_response,
                         attempt=attempt,
                         policy=policy,
                     ):
@@ -208,8 +209,8 @@ async def retry_astream(
                     yield event
                     return
 
-                if isinstance(event, TextDelta):
-                    emitted_text = True
+                if (isinstance(event, (TextDelta, ToolCallCompleted))):
+                    emitted_response = True
 
                 yield event
 
@@ -223,7 +224,7 @@ async def retry_astream(
 
             if _can_retry(
                 error,
-                emitted_text=emitted_text,
+                emitted_response=emitted_response,
                 attempt=attempt,
                 policy=policy
             ):
