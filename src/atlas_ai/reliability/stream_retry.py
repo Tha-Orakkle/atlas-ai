@@ -45,7 +45,7 @@ def _log_retry(
     delay = calculate_retry_delay(error, policy, attempt)
 
     logger.warning(
-        "Retrying streaming request | interaction_id=%s"
+        "Retrying streaming request | interaction_id=%s "
         "request_id=%s next_attempt=%d max_attempts=%d "
         "delay_seconds=%.2f",
         request_context.interaction_id if request_context else None,
