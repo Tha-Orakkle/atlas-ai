@@ -22,6 +22,23 @@ class RetryPolicy:
     safe_to_retry: bool = True
 
 
+def calculate_retry_delay(
+    error: AtlasError,
+    policy: RetryPolicy,
+    attempt: int
+) -> float:
+    """Calculate the delay before the next retry."""
+    if error.retry_after is not None:
+        return error.retry_after
+
+    exponential_delay = policy.base_delay * (2 ** (attempt - 1))
+
+    return random.uniform(
+        0,
+        min(exponential_delay, policy.max_delay)
+    )
+
+
 def retry(
     operation: Callable[[], Any],
     *,
@@ -36,7 +53,7 @@ def retry(
             return operation()
 
         except AtlasError as exc:
-            logger.info(
+            logger.warning(
                 "LLM request attempt failed | interaction_id=%s "
                 "request_id=%s attempt=%d max_attempts=%d error_type=%s",
                 request_context.interaction_id if request_context else None,
@@ -59,20 +76,7 @@ def retry(
                 logger.warning("Operation is not safe to retry. Aborting.")
                 raise
 
-            # Check for explicitly provided delay
-            if exc.retry_after is not None:
-                wait_time = exc.retry_after
-            else:
-                exponential_delay = (
-                    policy.base_delay * (2 ** (attempt - 1))
-                )
-                wait_time = random.uniform(
-                    0,
-                    min(
-                        exponential_delay,
-                        policy.max_delay
-                    )
-                )
+            wait_time = calculate_retry_delay(exc, policy, attempt)
             logger.warning("Waiting ~%.2f seconds...", wait_time)
 
             time.sleep(wait_time)
