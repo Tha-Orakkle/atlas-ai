@@ -408,3 +408,100 @@ def test_async_respects_retry_after(monkeypatch):
     assert events == [
         ResponseCompleted(message=AssistantMessage(text="Done"))
     ]
+
+
+def test_sync_logs_non_retryable_stream_failure(
+    monkeypatch, caplog,
+):
+    secret = "PRIVATE_ERROR_MESSAGE"
+    calls = 0
+
+    def operation():
+        nonlocal calls
+        calls += 1
+        yield StreamError(
+            error=LLMAuthenticationError(secret)
+        )
+
+    monkeypatch.setattr(
+        "atlas_ai.reliability.stream_retry.time.sleep",
+        lambda _: pytest.fail("Must not retry"),
+    )
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="atlas_ai.reliability.stream_retry",
+    ):
+        events = list(
+            retry_stream(
+                operation,
+                policy=RetryPolicy(max_attempts=3),
+                request_context=RequestContext(
+                    "interaction-1", "request-1"
+                ),
+            )
+        )
+
+    assert calls == 1
+    assert len(events) == 1
+    assert isinstance(events[0], StreamError)
+
+    assert "Streaming request attempt failed" in caplog.text
+    assert "interaction_id=interaction-1" in caplog.text
+    assert "request_id=request-1" in caplog.text
+    assert "attempt=1" in caplog.text
+    assert "error_type=LLMAuthenticationError" in caplog.text
+    assert "retryable=False" in caplog.text
+    assert secret not in caplog.text
+    assert "Retrying streaming request" not in caplog.text
+    assert "safe_to_retry=True" in caplog.text
+
+
+def test_async_logs_non_retryable_stream_failure(
+    monkeypatch, caplog,
+):
+    secret = "PRIVATE_ERROR_MESSAGE"
+    calls = 0
+
+    async def operation():
+        nonlocal calls
+        calls += 1
+        yield StreamError(
+            error=LLMAuthenticationError(secret)
+        )
+
+    async def unexpected_sleep(_):
+        pytest.fail("Must not retry")
+
+    monkeypatch.setattr(
+        "atlas_ai.reliability.stream_retry.asyncio.sleep",
+        unexpected_sleep,
+    )
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="atlas_ai.reliability.stream_retry",
+    ):
+        events = collect(
+            retry_astream(
+                operation,
+                policy=RetryPolicy(max_attempts=3),
+                request_context=RequestContext(
+                    "interaction-1", "request-1"
+                ),
+            )
+        )
+
+    assert calls == 1
+    assert len(events) == 1
+    assert isinstance(events[0], StreamError)
+
+    assert "Streaming request attempt failed" in caplog.text
+    assert "interaction_id=interaction-1" in caplog.text
+    assert "request_id=request-1" in caplog.text
+    assert "attempt=1" in caplog.text
+    assert "error_type=LLMAuthenticationError" in caplog.text
+    assert "retryable=False" in caplog.text
+    assert secret not in caplog.text
+    assert "Retrying streaming request" not in caplog.text
+    assert "safe_to_retry=True" in caplog.text
