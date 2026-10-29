@@ -23,6 +23,7 @@ from atlas_ai.models import (
 )
 from atlas_ai.observability import RequestContext
 from atlas_ai.prompts import PROMPTS
+from atlas_ai.reliability.stream_retry import retry_astream, retry_stream
 from atlas_ai.tools.executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
@@ -249,8 +250,15 @@ class AssistantService:
 
                 final_message = None
 
-                for event in self.client.stream(
-                    context, request_context=request_context
+                # for event in self.client.stream(
+                #     context, request_context=request_context
+                # ):
+
+                for event in retry_stream(
+                    lambda request_context=request_context: self.client.stream(
+                        context, request_context=request_context
+                    ),
+                    request_context=request_context
                 ):
                     if isinstance(event, TextDelta):
                         yield event
@@ -352,8 +360,16 @@ class AssistantService:
                 )
                 final_message = None
 
-                async for event in self.client.astream(
-                    context,
+                # async for event in self.client.astream(
+                #     context,
+                #     request_context=request_context
+                # ):
+
+                async for event in retry_astream(
+                    lambda request_context=request_context: self.client.astream(
+                        context,
+                        request_context=request_context,
+                    ),
                     request_context=request_context
                 ):
                     if isinstance(event, TextDelta):
