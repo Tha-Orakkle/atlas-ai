@@ -4,6 +4,7 @@ from decimal import Decimal
 from unittest.mock import Mock
 
 from atlas_ai.cost import CostCalculator, ModelPricing
+from atlas_ai.errors import LLMRateLimitError
 from atlas_ai.llm.streaming import (
     ResponseCompleted,
     StreamError,
@@ -282,3 +283,41 @@ def test_astream_tool_loop_preserves_interaction_id_and_changes_request_id(
     first, second = client.request_contexts
     assert first.interaction_id == second.interaction_id
     assert first.request_id != second.request_id
+
+
+def test_astream_response_retries_before_text_with_same_request_context(
+    tool_executor,
+    monkeypatch,
+):
+    final_message = AssistantMessage(text="Recovered.")
+
+    client = FakeAsyncLLMClient([
+        [
+            StreamError(error=LLMRateLimitError("limited")),
+        ],
+        [
+            TextDelta("Recovered."),
+            ResponseCompleted(message=final_message),
+        ],
+    ])
+    assistant = AssistantService(client, tool_executor)
+
+    async def fake_sleep(_):
+        return None
+
+    monkeypatch.setattr(
+        "atlas_ai.reliability.stream_retry.asyncio.sleep",
+        fake_sleep,
+    )
+
+    events = collect(assistant.astream_response("Hello."))
+
+    assert events == [
+        TextDelta("Recovered."),
+        ResponseCompleted(message=final_message),
+    ]
+    assert len(client.request_contexts) == 2
+
+    first, second = client.request_contexts
+    assert first.interaction_id == second.interaction_id
+    assert first.request_id == second.request_id

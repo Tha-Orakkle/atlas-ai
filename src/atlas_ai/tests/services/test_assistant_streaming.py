@@ -8,6 +8,7 @@ from atlas_ai.cost import CostCalculator, ModelPricing
 from atlas_ai.errors import (
     AtlasError,
     LLMBadResponseError,
+    LLMRateLimitError,
 )
 from atlas_ai.llm.streaming import (
     ResponseCompleted,
@@ -467,3 +468,37 @@ def test_tool_loop_preserves_interaction_id_and_changes_request_id(
     first, second = client.request_contexts
     assert first.interaction_id == second.interaction_id
     assert first.request_id != second.request_id
+
+
+def test_stream_response_retries_before_text_with_same_request_context(
+    assistant_factory,
+    monkeypatch,
+):
+    final_message = AssistantMessage(text="Recovered.")
+
+    assistant, client = assistant_factory([
+        [
+            StreamError(error=LLMRateLimitError("limited")),
+        ],
+        [
+            TextDelta("Recovered."),
+            ResponseCompleted(message=final_message),
+        ],
+    ])
+
+    monkeypatch.setattr(
+        "atlas_ai.reliability.stream_retry.time.sleep",
+        lambda _: None,
+    )
+
+    events = list(assistant.stream_response("Hello."))
+
+    assert events == [
+        TextDelta("Recovered."),
+        ResponseCompleted(message=final_message),
+    ]
+    assert len(client.request_contexts) == 2
+
+    first, second = client.request_contexts
+    assert first.interaction_id == second.interaction_id
+    assert first.request_id == second.request_id
