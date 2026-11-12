@@ -1,6 +1,6 @@
 import pytest
 
-from atlas_ai.vector_math import (
+from ..vector_math import (
     cosine_similarity,
     dot_product,
     euclidean_distance,
