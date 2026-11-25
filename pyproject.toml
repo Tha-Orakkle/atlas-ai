@@ -23,5 +23,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "faiss-cpu>=1.16.0",
+    "numpy>=2.5.5",
     "ruff>=0.17.0",
 ]
